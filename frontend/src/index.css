@@ -1,0 +1,88 @@
+@import "@fontsource-variable/geist/wght.css";
+@import "@fontsource-variable/geist-mono/wght.css";
+@import "./design/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .font-mono,
+  code,
+  pre {
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+
+  ::selection {
+    background: rgba(0, 112, 243, 0.35);
+    color: var(--color-ink);
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-lg border border-border bg-card;
+  }
+
+  .panel-header {
+    @apply flex h-11 items-center justify-between border-b border-border px-4;
+  }
+
+  .page-scroll {
+    @apply h-full overflow-auto p-8;
+  }
+
+  .page-inner {
+    @apply mx-auto max-w-6xl;
+  }
+  .pill-thinking {
+    background: var(--color-timeline-thinking);
+    color: var(--color-pill-fg);
+  }
+  .pill-grep {
+    background: var(--color-timeline-grep);
+    color: var(--color-pill-fg);
+  }
+  .pill-read {
+    background: var(--color-timeline-read);
+    color: var(--color-pill-fg);
+  }
+  .pill-edit {
+    background: var(--color-timeline-edit);
+    color: var(--color-pill-fg);
+  }
+  .pill-done {
+    background: var(--color-timeline-done);
+    color: var(--color-pill-fg-inverse);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-hairline-strong);
+  border-radius: 4px;
+}

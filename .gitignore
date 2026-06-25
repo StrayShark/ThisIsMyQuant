@@ -1,0 +1,54 @@
+# -------------------- 环境与密钥 --------------------
+.env
+.env.local
+.env.*.local
+
+# -------------------- Node / 前端 --------------------
+node_modules/
+.pnpm-store/
+dist/
+dist-ssr/
+.vite/
+*.local
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# -------------------- Tauri / Rust --------------------
+src-tauri/target/
+
+# -------------------- 数据库与数据 --------------------
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.parquet
+*.csv
+!docs/**/*.csv
+!tests/fixtures/*.csv
+
+# -------------------- 日志 --------------------
+logs/
+*.log
+
+# -------------------- IDE --------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+*.tsbuildinfo
+frontend/dist-tsbuildinfo/
+frontend/playwright-report/
+frontend/test-results/
+
+# -------------------- TradingView 库 --------------------
+# charting_library/ 为 TradingView 官方库，需自行申请放置
+frontend/public/charting_library/
+
+# -------------------- CTP 凭据缓存 --------------------
+*.con
+*.crt
+*.key
+ctp_flow/

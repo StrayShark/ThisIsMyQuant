@@ -1,0 +1,17 @@
+{
+  "name": "thisismyquant",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm tauri:dev",
+    "build": "pnpm tauri:build",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "test:e2e": "pnpm --dir frontend test:e2e",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --test integration_test -- --nocapture",
+    "icon:gen": "node scripts/gen-icons.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.3"
+  }
+}
