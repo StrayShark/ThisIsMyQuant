@@ -9,6 +9,7 @@ import type {
   FuturesSector,
   Interval,
   KLine,
+  CalendarEvent,
   NewsItemView,
 } from "@/types";
 import { e2eMockApi } from "@/api/e2e-mock";
@@ -57,6 +58,21 @@ const liveApi = {
         symbol: params?.symbol ?? null,
         dimension: params?.dimension ?? null,
         limit: params?.limit ?? null,
+      })
+    ),
+
+  listCalendarEvents: async (params?: {
+    start?: string;
+    end?: string;
+    min_star?: number;
+    country?: string;
+  }) =>
+    unwrap(
+      await invoke<ApiResponse<CalendarEvent[]>>("list_calendar_events", {
+        start: params?.start ?? null,
+        end: params?.end ?? null,
+        min_star: params?.min_star ?? null,
+        country: params?.country ?? null,
       })
     ),
 

@@ -26,8 +26,7 @@ const DIMENSIONS: &[DimensionDef] = &[
         code: "overseas_upstream",
         label: "海外上游",
         keywords: &[
-            "LME", "CBOT", "普氏", "发运", "到港", "进口", "外盘", "原油", "OPEC", "美联储",
-            "美元", "巴西", "澳洲",
+            "LME", "CBOT", "普氏", "发运", "到港", "进口", "外盘", "原油", "OPEC", "巴西", "澳洲",
         ],
     },
     DimensionDef {
@@ -57,8 +56,21 @@ const DIMENSIONS: &[DimensionDef] = &[
     },
     DimensionDef {
         code: "macro",
-        label: "宏观金融",
-        keywords: &["PMI", "GDP", "利率", "降准", "降息", "汇率", "通胀", "CPI", "宏观", "股指"],
+        label: "国内宏观",
+        keywords: &[
+            "PMI", "GDP", "LPR", "M2", "社融", "降准", "降息", "央行", "国务院", "国家统计局",
+            "人民币", "通胀", "宏观", "股指", "A股", "中国CPI", "中国PPI", "财新", "制造业PMI",
+        ],
+    },
+    DimensionDef {
+        code: "overseas_finance",
+        label: "国外金融环境",
+        keywords: &[
+            "美联储", "FOMC", "Fed", "鲍威尔", "Powell", "加息", "降息", "缩表", "点阵图",
+            "CPI", "PPI", "PCE", "核心PCE", "非农", "NFP", "ISM", "初请", "零售销售",
+            "美国通胀", "美国就业", "美国GDP", "美债", "10年期", "2年期", "美元", "美元指数",
+            "DXY", "鹰派", "鸽派", "利率决策", "货币政策", "欧央行", "ECB", "日本央行",
+        ],
     },
     DimensionDef {
         code: "geopolitics",
@@ -85,6 +97,7 @@ static SECTOR_DIMS: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|
                 "demand",
                 "domestic_supply",
                 "inventory",
+                "overseas_finance",
                 "overseas_upstream",
                 "policy",
             ],
@@ -93,6 +106,7 @@ static SECTOR_DIMS: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|
             "metals",
             vec![
                 "macro",
+                "overseas_finance",
                 "overseas_upstream",
                 "inventory",
                 "earnings",
@@ -104,6 +118,7 @@ static SECTOR_DIMS: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|
             vec![
                 "weather",
                 "seasonality",
+                "overseas_finance",
                 "overseas_upstream",
                 "inventory",
                 "demand",
@@ -113,6 +128,7 @@ static SECTOR_DIMS: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|
             "energy_chemical",
             vec![
                 "overseas_upstream",
+                "overseas_finance",
                 "domestic_supply",
                 "inventory",
                 "spread_arb",
@@ -124,13 +140,14 @@ static SECTOR_DIMS: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|
             vec![
                 "geopolitics",
                 "demand",
+                "overseas_finance",
                 "seasonality",
                 "overseas_upstream",
             ],
         ),
         (
             "financial",
-            vec!["macro", "policy", "flow", "technical"],
+            vec!["macro", "overseas_finance", "policy", "flow", "technical"],
         ),
     ])
 });

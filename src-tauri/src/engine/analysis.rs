@@ -1,13 +1,14 @@
 use chrono::{Duration, Utc};
 
-use crate::adapters::{AkshareClient, JinshiClient};
+use crate::adapters::{default_calendar_range_from_today, AkshareClient, JinshiClient};
 use crate::db::Database;
 use crate::engine::{dimensions, indicator, sectors};
 
 pub const SYSTEM_PROMPT: &str = "你是一名专业的期货市场分析师，擅长结合技术面与基本面进行走势研判。\
 技术分析默认基于**日 K 线**（1d）周期：趋势、均线、MACD、支撑阻力均优先从日 K 视角解读；\
 勿混用分钟级走势替代日 K 结论。请基于提供的数据给出客观、结构化的分析，包含：趋势研判、关键支撑阻力、\
-资金面/指标信号、分维度产业资讯解读、潜在风险与关注点。语言简洁专业，避免泛泛而谈。\
+资金面/指标信号、分维度产业资讯解读（含国内宏观与国外金融环境，如美国 CPI/PPI、美联储利率决策等对商品与汇率的传导）、\
+潜在风险与关注点。语言简洁专业，避免泛泛而谈。\
 务必声明：本分析仅供参考，不构成投资建议。";
 
 pub async fn build_context(
@@ -77,6 +78,32 @@ pub async fn build_context(
         }
     }
 
+    let mut calendar_events: Vec<serde_json::Value> = Vec::new();
+    if let Some(j) = jinshi {
+        let (cal_start, cal_end) = default_calendar_range_from_today();
+        if let Ok(events) = j
+            .fetch_calendar_events(cal_start, cal_end, 3, None)
+            .await
+        {
+            calendar_events = events
+                .into_iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "pub_time": e.pub_time,
+                        "country": e.country,
+                        "name": e.name,
+                        "star": e.star,
+                        "previous": e.previous,
+                        "consensus": e.consensus,
+                        "actual": e.actual,
+                        "unit": e.unit,
+                        "status": e.status,
+                    })
+                })
+                .collect();
+        }
+    }
+
     let data_range: Vec<String> = if klines.is_empty() {
         vec![]
     } else {
@@ -108,6 +135,7 @@ pub async fn build_context(
         "recent_closes": recent_closes,
         "news": news_items,
         "news_by_dimension": news_by_dimension,
+        "calendar_events": calendar_events,
     })
 }
 
@@ -146,6 +174,7 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
     let dimension_list = ctx["dimensions"].as_array().cloned().unwrap_or_default();
     let news_by_dim = ctx["news_by_dimension"].as_object().cloned();
     let news = ctx["news"].as_array().cloned().unwrap_or_default();
+    let calendar = ctx["calendar_events"].as_array().cloned().unwrap_or_default();
 
     let trigger_label = match trigger {
         "daily" => "每日收盘分析",
@@ -159,6 +188,7 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
         .unwrap_or_else(|| "N/A".into());
 
     let dimension_news_block = render_dimension_news_block(&dimension_list, news_by_dim.as_ref(), &news);
+    let calendar_block = render_calendar_block(&calendar);
     let dimension_output_list = dimension_list
         .iter()
         .map(|d| {
@@ -188,6 +218,8 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
         - 近10日收盘：{closes}\n\n\
         ## 分维度资讯（已分类入库，供基本面参考）\n\
         {dimension_news_block}\n\n\
+        ## 宏观数据发布日程（金十财经日历，未来两周高重要性）\n\
+        {calendar_block}\n\n\
         ## 输出要求\n\
         1. **首先**输出一个 JSON 代码块（```json），格式如下（键为维度 code，值为要点字符串数组）：\n\
         ```json\n\
@@ -214,6 +246,35 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
         min_l = ind["min_low"].as_f64().map(|v| v.to_string()).unwrap_or_else(|| "N/A".into()),
         closes = ctx["recent_closes"].clone(),
     )
+}
+
+fn render_calendar_block(events: &[serde_json::Value]) -> String {
+    if events.is_empty() {
+        return "（暂无日程数据，或未配置金十日历接口）".into();
+    }
+    events
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            let stars = e["star"].as_u64().unwrap_or(1);
+            format!(
+                "  {}. [{}] {} {} ★{} | 前值={} 预期={} 公布={}{}",
+                i + 1,
+                e["pub_time"].as_str().unwrap_or(""),
+                e["country"].as_str().unwrap_or(""),
+                e["name"].as_str().unwrap_or(""),
+                stars,
+                e["previous"].as_str().unwrap_or("-"),
+                e["consensus"].as_str().unwrap_or("-"),
+                e["actual"].as_str().unwrap_or("-"),
+                e["unit"]
+                    .as_str()
+                    .map(|u| format!(" ({u})"))
+                    .unwrap_or_default(),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn render_dimension_news_block(

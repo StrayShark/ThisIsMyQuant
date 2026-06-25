@@ -104,6 +104,21 @@
 3. 新闻入库保留 `source=jin10`、`category_id`、`display_time`、`title`、`desc/list`、`url`，便于溯源。
 4. 对 `52041`、`52042` 这类混合内容做关键词二次过滤，避免海外指数工具污染国内期货分析。
 
+#### 财经日历（宏观数据发布日程）
+
+来源页：`https://rili.jin10.com/`（日视图 WebSocket + HTTP 开放接口）
+
+| 用途 | 接口 | 关键参数/头 |
+|---|---|---|
+| 按日经济数据 | `GET {JINSHI_RILI_API_BASE}/data/getDay` | `date=YYYY-MM-DD`；`x-app-id: sKKYe29sFuJaeOCJ`、`x-version: 0.28` |
+| MCP 备用（需 Token） | `POST https://mcp.jin10.com/mcp` | `tools/call` → `list_calendar`；Bearer `JIN10_MCP_TOKEN` |
+
+Rust 实现：`src-tauri/src/adapters/jinshi_calendar.rs`，Tauri Command `list_calendar_events`。
+
+默认查询未来两周、重要性 ★3 及以上事件（CPI/PPI/非农/美联储决议等），并注入 LLM 分析 prompt。
+
+返回字段（兼容多种命名）：`country`、`pub_time`、`name`/`indicator_name`、`star`、`previous`、`consensus`、`actual`、`unit`。
+
 ### 2.5 其他国内源（可选）
 
 | 源 | 说明 | 何时用 |

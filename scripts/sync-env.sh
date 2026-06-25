@@ -36,7 +36,7 @@ extract() {
 }
 
 # 同步 LLM Keys
-for key in DOUBAO_API_KEY MINIMAX_API_KEY OPENAI_API_KEY DEEPSEEK_API_KEY QWEN_API_KEY; do
+for key in DOUBAO_API_KEY MINIMAX_API_KEY OPENAI_API_KEY DEEPSEEK_API_KEY QWEN_API_KEY JIN10_MCP_TOKEN; do
   val=$(extract "$key")
   if [ -n "$val" ]; then
     # 用 | 作为 sed 分隔符避免 Key 中的 / 冲突

@@ -238,6 +238,45 @@ async fn jinshi_news_live() {
 }
 
 #[tokio::test]
+async fn jinshi_calendar_live() {
+    use app_lib::adapters::{default_calendar_range, fetch_calendar_range, CalendarFetchOptions};
+
+    let config = Config::load();
+    if !config.jinshi_enabled {
+        eprintln!("SKIP: JINSHI_ENABLED=false");
+        return;
+    }
+    let http = Client::builder()
+        .user_agent("ThisIsMyQuant-E2E/0.1")
+        .build()
+        .unwrap();
+    let (start, end) = default_calendar_range(3);
+    match fetch_calendar_range(
+        &http,
+        &config,
+        CalendarFetchOptions {
+            start,
+            end,
+            min_star: 3,
+            country: None,
+        },
+    )
+    .await
+    {
+        Ok(events) if !events.is_empty() => {
+            assert!(events.iter().any(|e| e.star >= 3));
+            assert!(
+                events.iter().any(|e| !e.country.is_empty()),
+                "MCP events should have country parsed from title"
+            );
+            eprintln!("calendar live: {} events, sample={}", events.len(), events[0].name);
+        }
+        Ok(_) => eprintln!("SKIP: calendar empty (rili API may be unavailable)"),
+        Err(e) => eprintln!("SKIP: calendar fetch failed: {e}"),
+    }
+}
+
+#[tokio::test]
 async fn reports_db_crud() {
     let db = temp_db();
     let report = AnalysisReport {

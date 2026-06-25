@@ -2,6 +2,7 @@
 import { ChartPanel } from "@/features/chart/ChartPanel";
 import { SymbolList } from "@/features/market/SymbolList";
 import { AiPanel } from "@/features/analysis/AiPanel";
+import { CalendarPanel } from "@/features/calendar/CalendarPanel";
 import { NewsPanel } from "@/features/news/NewsPanel";
 
 export function DashboardPage() {
@@ -16,6 +17,7 @@ export function DashboardPage() {
       <div className="w-[360px] shrink-0 overflow-y-auto border-l border-border bg-background">
         <div className="flex flex-col gap-3 p-3">
           <AiPanel />
+          <CalendarPanel />
           <NewsPanel />
         </div>
       </div>

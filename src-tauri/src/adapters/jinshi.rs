@@ -2,13 +2,15 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chrono::NaiveDate;
 use reqwest::Client;
 use serde_json::Value;
 
+use crate::adapters::jinshi_calendar::{fetch_calendar_range, CalendarFetchOptions};
 use crate::config::Config;
 use crate::error::AppResult;
 use crate::engine::sectors::{get_sector_by_symbol, normalize_product};
-use crate::models::NewsItem;
+use crate::models::{CalendarEvent, NewsItem};
 
 const DEFAULT_HEADERS: [(&str, &str); 3] = [
     ("x-app-id", "fiXF2nOnDycGutVA"),
@@ -20,10 +22,12 @@ const DEFAULT_HEADERS: [(&str, &str); 3] = [
 pub struct JinshiClient {
     http: Client,
     base_url: String,
+    config: Config,
     enabled: bool,
     cache_ttl: f64,
     connected: bool,
     cache: std::sync::Arc<Mutex<HashMap<i64, (f64, Vec<NewsItem>)>>>,
+    calendar_cache: std::sync::Arc<Mutex<HashMap<String, (f64, Vec<CalendarEvent>)>>>,
 }
 
 impl JinshiClient {
@@ -31,10 +35,12 @@ impl JinshiClient {
         Self {
             http,
             base_url: config.jinshi_api_base.trim_end_matches('/').to_string(),
+            config: config.clone(),
             enabled: config.jinshi_enabled,
             cache_ttl: config.jinshi_cache_ttl,
             connected: false,
             cache: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            calendar_cache: std::sync::Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -103,6 +109,45 @@ impl JinshiClient {
             return Ok(vec![]);
         }
         self.fetch_category(52042, limit).await
+    }
+
+    pub async fn fetch_calendar_events(
+        &self,
+        start: NaiveDate,
+        end: NaiveDate,
+        min_star: u8,
+        country: Option<&str>,
+    ) -> AppResult<Vec<CalendarEvent>> {
+        if !self.enabled {
+            return Ok(vec![]);
+        }
+        let cache_key = format!(
+            "{start}|{end}|{min_star}|{}",
+            country.unwrap_or("*")
+        );
+        let now = now_secs();
+        if let Ok(cache) = self.calendar_cache.lock() {
+            if let Some((ts, items)) = cache.get(&cache_key) {
+                if now - ts < self.cache_ttl {
+                    return Ok(items.clone());
+                }
+            }
+        }
+        let events = fetch_calendar_range(
+            &self.http,
+            &self.config,
+            CalendarFetchOptions {
+                start,
+                end,
+                min_star,
+                country,
+            },
+        )
+        .await?;
+        if let Ok(mut cache) = self.calendar_cache.lock() {
+            cache.insert(cache_key, (now, events.clone()));
+        }
+        Ok(events)
     }
 
     pub async fn warm_cache(&self, category_ids: &[i64], limit: usize) -> AppResult<()> {

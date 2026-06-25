@@ -50,6 +50,36 @@ const MOCK_DIMENSIONS: DimensionView[] = [
   { code: "demand", label: "需求" },
   { code: "inventory", label: "库存" },
   { code: "domestic_supply", label: "国内供给" },
+  { code: "overseas_finance", label: "国外金融环境" },
+];
+
+const MOCK_CALENDAR = [
+  {
+    id: "cal-e2e-1",
+    pub_time: new Date(Date.now() + 86400000).toISOString().slice(0, 16).replace("T", " "),
+    country: "美国",
+    name: "美国CPI月率",
+    star: 5,
+    previous: "0.2%",
+    consensus: "0.3%",
+    actual: null,
+    unit: "%",
+    status: "scheduled",
+    event_type: "data",
+  },
+  {
+    id: "cal-e2e-2",
+    pub_time: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 16).replace("T", " "),
+    country: "中国",
+    name: "中国官方制造业PMI",
+    star: 4,
+    previous: "49.5",
+    consensus: "49.8",
+    actual: "50.1",
+    unit: "",
+    status: "released",
+    event_type: "data",
+  },
 ];
 
 const MOCK_NEWS = [
@@ -130,6 +160,8 @@ export const e2eMockApi = {
     if (params?.dimension && params.dimension !== "demand") return [];
     return MOCK_NEWS;
   },
+
+  listCalendarEvents: async () => MOCK_CALENDAR,
 
   listDimensionFacts: async () => MOCK_FACTS,
 

@@ -137,6 +137,7 @@ pub fn run() {
             commands::stream_analysis,
             commands::analysis_followup,
             commands::list_news,
+            commands::list_calendar_events,
             commands::get_settings,
             commands::market_subscribe,
         ])

@@ -27,7 +27,8 @@
 | `inventory` | 库存 | 社会库存、港口库存、仓单 | 库存周报 |
 | `spread_arb` | 价差套利 | 跨期/跨品种价差、进口利润 | 行情计算 |
 | `policy` | 政策监管 | 收储抛储、环保限产、关税 | 新闻 |
-| `macro` | 宏观金融 | 利率、汇率、PMI、股指联动 | 宏观日历 |
+| `macro` | 国内宏观 | 中国 PMI、社融、LPR、政策预期 | 宏观数据、央行、统计局 |
+| `overseas_finance` | 国外金融环境 | 美国 CPI/PPI/PCE、非农、美联储/FOMC 利率决策、美债与美元指数 | 金十宏观快讯、海外日历 |
 | `geopolitics` | 地缘 | 制裁、航道、战争 | 新闻 |
 | `earnings` | 企业财报 | 龙头矿商/钢企/油企业绩指引 | 公告、新闻 |
 | `technical` | 技术面 | 趋势、关键位、持仓量 | K 线（已有） |
@@ -37,12 +38,12 @@
 
 | 板块 | 优先维度 |
 |---|---|
-| 黑色建材 | demand, domestic_supply, inventory, overseas_upstream, policy |
-| 有色贵金属 | macro, overseas_upstream, inventory, earnings, geopolitics |
-| 农产品 | weather, seasonality, overseas_upstream, inventory, demand |
-| 能源化工 | overseas_upstream, domestic_supply, inventory, spread_arb, policy |
-| 航运 | geopolitics, demand, seasonality, overseas_upstream |
-| 金融 | macro, policy, flow, technical |
+| 黑色建材 | demand, domestic_supply, inventory, overseas_finance, overseas_upstream, policy |
+| 有色贵金属 | macro, overseas_finance, overseas_upstream, inventory, earnings, geopolitics |
+| 农产品 | weather, seasonality, overseas_finance, overseas_upstream, inventory, demand |
+| 能源化工 | overseas_upstream, overseas_finance, domestic_supply, inventory, spread_arb, policy |
+| 航运 | geopolitics, demand, overseas_finance, seasonality, overseas_upstream |
+| 金融 | macro, overseas_finance, policy, flow, technical |
 
 ---
 

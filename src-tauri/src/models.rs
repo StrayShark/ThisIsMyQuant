@@ -199,6 +199,27 @@ pub struct JinshiHealth {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarEvent {
+    pub id: String,
+    pub pub_time: String,
+    pub country: String,
+    pub name: String,
+    pub star: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consensus: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub affect: Option<String>,
+    pub status: String,
+    pub event_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewsItem {
     pub title: String,
     pub summary: String,
@@ -335,6 +356,11 @@ pub fn parse_dt(s: &str) -> Option<DateTime<Utc>> {
         .map(|d| d.with_timezone(&Utc))
         .or_else(|| {
             chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+                .ok()
+                .map(|n| n.and_utc())
+        })
+        .or_else(|| {
+            chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M")
                 .ok()
                 .map(|n| n.and_utc())
         })

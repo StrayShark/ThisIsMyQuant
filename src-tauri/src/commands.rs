@@ -6,7 +6,8 @@ use tauri::{AppHandle, Emitter, State};
 use crate::engine::sectors::{self, SectorView};
 use crate::engine::dimensions;
 use crate::models::{
-    AnalysisDoneEvent, AnalysisReport, ApiResponse, AppSettingsView, Contract, DimensionFact,
+    AnalysisDoneEvent, AnalysisReport, ApiResponse, AppSettingsView, CalendarEvent, Contract,
+    DimensionFact,
     DimensionView, FollowupMessage, HealthResponse,
     JinshiHealth, KLine, RealtimeHealth, TriggerAnalysisResult,
     AkshareHealth, PollStatus, NewsPollStatus,
@@ -353,6 +354,40 @@ pub async fn list_news(
                 .collect();
             Ok(ApiResponse::ok(views))
         }
+        Err(e) => Ok(ApiResponse::err(e.to_string())),
+    }
+}
+
+#[tauri::command]
+pub async fn list_calendar_events(
+    state: State<'_, Arc<AppState>>,
+    start: Option<String>,
+    end: Option<String>,
+    min_star: Option<u8>,
+    country: Option<String>,
+) -> Result<ApiResponse<Vec<CalendarEvent>>, String> {
+    if !state.config.jinshi_enabled {
+        return Ok(ApiResponse::ok(vec![]));
+    }
+    let (default_start, default_end) = crate::adapters::default_calendar_range_from_today();
+    let start_date = start
+        .and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok())
+        .unwrap_or(default_start);
+    let end_date = end
+        .and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok())
+        .unwrap_or(default_end);
+    let min_star = min_star.unwrap_or(3).clamp(1, 5);
+    match state
+        .jinshi
+        .fetch_calendar_events(
+            start_date,
+            end_date,
+            min_star,
+            country.as_deref(),
+        )
+        .await
+    {
+        Ok(events) => Ok(ApiResponse::ok(events)),
         Err(e) => Ok(ApiResponse::err(e.to_string())),
     }
 }

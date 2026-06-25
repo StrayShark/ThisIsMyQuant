@@ -9,6 +9,11 @@ pub struct Config {
     pub watchlist: Vec<String>,
     pub jinshi_enabled: bool,
     pub jinshi_api_base: String,
+    pub jinshi_rili_api_base: String,
+    pub jinshi_rili_app_id: String,
+    pub jin10_mcp_token: String,
+    pub jin10_mcp_server_url: String,
+    pub jin10_mcp_protocol_version: String,
     pub jinshi_cache_ttl: f64,
     pub jinshi_poll_interval: f64,
     pub default_llm_provider: String,
@@ -143,6 +148,21 @@ impl Config {
             watchlist,
             jinshi_enabled: env_bool("JINSHI_ENABLED", true),
             jinshi_api_base: env_str("JINSHI_API_BASE", "https://mp-api.jin10.com"),
+            jinshi_rili_api_base: env_str(
+                "JINSHI_RILI_API_BASE",
+                "https://e0430d16720e4211b5e072c26205c890.z3c.jin10.com",
+            ),
+            jinshi_rili_app_id: env_str("JINSHI_RILI_APP_ID", "sKKYe29sFuJaeOCJ"),
+            jin10_mcp_token: {
+                let primary = env_str("JIN10_MCP_TOKEN", "");
+                if primary.trim().is_empty() {
+                    env_str("JIN10_BEARER_TOKEN", "")
+                } else {
+                    primary
+                }
+            },
+            jin10_mcp_server_url: env_str("JIN10_MCP_SERVER_URL", "https://mcp.jin10.com/mcp"),
+            jin10_mcp_protocol_version: env_str("JIN10_MCP_PROTOCOL_VERSION", "2025-11-25"),
             jinshi_cache_ttl: env_f64("JINSHI_CACHE_TTL", 300.0),
             jinshi_poll_interval: env_f64("JINSHI_POLL_INTERVAL", 300.0),
             default_llm_provider: env_str("DEFAULT_LLM_PROVIDER", "doubao"),

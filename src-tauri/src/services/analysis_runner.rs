@@ -25,7 +25,7 @@ pub async fn run_analysis(
 
     let ctx = build_context(
         &state.akshare,
-        if state.jinshi.is_connected() {
+        if state.config.jinshi_enabled {
             Some(&state.jinshi)
         } else {
             None

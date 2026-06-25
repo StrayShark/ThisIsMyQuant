@@ -27,6 +27,21 @@ export interface NewsItemView {
   classifications: NewsClassificationView[];
 }
 
+export interface CalendarEvent {
+  id: string;
+  pub_time: string;
+  country: string;
+  name: string;
+  star: number;
+  previous?: string | null;
+  consensus?: string | null;
+  actual?: string | null;
+  unit?: string | null;
+  affect?: string | null;
+  status: string;
+  event_type: string;
+}
+
 export interface FuturesProduct {
   code: string;
   symbol: string;

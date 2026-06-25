@@ -121,6 +121,40 @@ mod tests {
     }
 
     #[test]
+    fn classifies_us_macro_for_metals() {
+        let news = sample_news(
+            "美国CPI超预期 美联储维持高利率",
+            "黄金承压，美元指数走强，铜价震荡",
+            52019,
+        );
+        let labels = classify(&news);
+        assert!(
+            labels
+                .iter()
+                .any(|l| l.symbol == "AU0" && l.dimension_code == "overseas_finance"),
+            "expected AU0 overseas_finance, got {:?}",
+            labels
+        );
+    }
+
+    #[test]
+    fn classifies_us_cpi_for_metals() {
+        let news = sample_news(
+            "美国CPI超预期，美联储降息预期降温",
+            "核心PPI仍偏高，鲍威尔暗示利率将在更高水平维持更久",
+            52019,
+        );
+        let labels = classify(&news);
+        assert!(
+            labels
+                .iter()
+                .any(|l| l.dimension_code == "overseas_finance" && (l.symbol == "AU0" || l.symbol == "CU0")),
+            "expected overseas_finance label for metals, got {:?}",
+            labels
+        );
+    }
+
+    #[test]
     fn ignores_unrelated_without_keywords() {
         let news = sample_news("无关娱乐新闻", "明星八卦", 52042);
         let labels = classify(&news);
