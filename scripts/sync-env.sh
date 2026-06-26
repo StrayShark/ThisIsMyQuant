@@ -35,13 +35,27 @@ extract() {
   echo "$val"
 }
 
-# 同步 LLM Keys
-for key in DOUBAO_API_KEY MINIMAX_API_KEY OPENAI_API_KEY DEEPSEEK_API_KEY QWEN_API_KEY JIN10_MCP_TOKEN; do
+# 同步 LLM Key（本地调试用）与金十 Token；项目 .env 已有非空值时保留
+for key in DOUBAO_API_KEY DOUBAO_BASE_URL DOUBAO_MODEL \
+  MINIMAX_API_KEY MINIMAX_BASE_URL MINIMAX_MODEL \
+  OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL \
+  DEEPSEEK_API_KEY DEEPSEEK_BASE_URL DEEPSEEK_MODEL \
+  QWEN_API_KEY QWEN_BASE_URL QWEN_MODEL \
+  DEFAULT_LLM_PROVIDER JIN10_MCP_TOKEN; do
   val=$(extract "$key")
   if [ -n "$val" ]; then
-    # 用 | 作为 sed 分隔符避免 Key 中的 / 冲突
-    sed -i.bak "s|^${key}=.*|${key}=${val}|" "$TARGET" 2>/dev/null || \
-    sed -i '' "s|^${key}=.*|${key}=${val}|" "$TARGET"
+    if grep -q "^${key}=" "$TARGET" 2>/dev/null; then
+      current=$(grep -E "^${key}=" "$TARGET" 2>/dev/null | head -1 | cut -d'=' -f2- || true)
+      if [ -n "$current" ]; then
+        continue
+      fi
+    fi
+    if grep -q "^${key}=" "$TARGET" 2>/dev/null; then
+      sed -i.bak "s|^${key}=.*|${key}=${val}|" "$TARGET" 2>/dev/null || \
+      sed -i '' "s|^${key}=.*|${key}=${val}|" "$TARGET"
+    else
+      echo "${key}=${val}" >> "$TARGET"
+    fi
     echo "  ✓ 已同步 $key"
   fi
 done
@@ -56,5 +70,4 @@ if grep -q "^ENCRYPTION_KEY=$" "$TARGET"; then
   echo "  ✓ 已生成 ENCRYPTION_KEY"
 fi
 
-echo ""
-echo "完成。请编辑 $TARGET 填入 CTP 仿真账号等其余配置。"
+echo "完成。行情源固定为 MARKET_FEED=akshare_poll。LLM Key 已同步至 .env（本地 debug 会自动导入 SQLite）；也可在应用内 Landing/设置页配置。"

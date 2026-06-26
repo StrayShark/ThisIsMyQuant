@@ -64,6 +64,7 @@ export function AiPanel() {
   const [streamDimensionSummary, setStreamDimensionSummary] = useState<DimensionSummaryData | null>(
     null
   );
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [stage, setStage] = useState<TimelineStage | undefined>();
   const [prompt, setPrompt] = useState("");
 
@@ -80,13 +81,14 @@ export function AiPanel() {
     enabled: Boolean(todayReport?.id),
   });
 
-  async function handleFullAnalysis() {
+  async function runAnalysis(trigger: string) {
     setStreaming(true);
     setStreamText("");
     setStreamDimensionSummary(null);
+    setAnalysisError(null);
     setStage("thinking");
     try {
-      const reader = await api.streamAnalysis(currentSymbol, "manual");
+      const reader = await api.streamAnalysis(currentSymbol, trigger);
       await readStream(reader, (obj) => {
         if (obj.text) {
           setStreamText((t) => t + String(obj.text));
@@ -100,11 +102,17 @@ export function AiPanel() {
           void queryClient.invalidateQueries({ queryKey: ["reports", currentSymbol] });
         }
       });
-    } catch {
-      /* ignore */
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "分析失败，请稍后重试";
+      setAnalysisError(msg);
+      setStage(undefined);
     } finally {
       setStreaming(false);
     }
+  }
+
+  async function handleFullAnalysis() {
+    await runAnalysis("manual");
   }
 
   async function handleFollowup() {
@@ -161,6 +169,33 @@ export function AiPanel() {
           <CardTitle className="text-sm font-semibold">Copilot</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 pt-3">
+          {analysisError && (
+            <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {analysisError}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              disabled={busy}
+              onClick={() => void runAnalysis("tomorrow")}
+            >
+              明日展望
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              disabled={busy}
+              onClick={() => void runAnalysis("short_term")}
+            >
+              短期研判
+            </Button>
+          </div>
           <div className="rounded-md border border-border bg-muted/20">
             <textarea
               value={prompt}

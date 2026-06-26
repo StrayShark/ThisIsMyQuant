@@ -95,6 +95,51 @@ impl AkshareClient {
         }))
     }
 
+    /// 基本面快照：持仓来自 Tick；仓单/基差占位。
+    pub async fn fetch_market_fundamentals(&self, symbol: &str) -> AppResult<Value> {
+        use chrono::{Duration, Utc};
+
+        let tick = self.fetch_latest_tick(symbol).await.ok().flatten();
+        let oi = tick.as_ref().map(|t| t.open_interest).unwrap_or(0);
+        let last = tick.as_ref().map(|t| t.last_price);
+
+        let end = Utc::now();
+        let start = end - Duration::days(10);
+        let klines = self
+            .get_history(symbol, "1d", start, end)
+            .await
+            .unwrap_or_default();
+        let prev_close = klines.last().map(|k| k.close);
+        let vol_1d = klines.last().map(|k| k.volume).unwrap_or(0);
+
+        let basis = match (last, prev_close) {
+            (Some(l), Some(p)) if p > 0.0 => {
+                let chg = l - p;
+                let pct = chg / p * 100.0;
+                Some(format!(
+                    "最新 {l:.1} vs 昨收 {p:.1}，变动 {chg:+.1}（{pct:+.2}%）"
+                ))
+            }
+            _ => None,
+        };
+
+        let warehouse = if oi > 0 {
+            Some(format!("持仓 {oi} 手"))
+        } else {
+            None
+        };
+
+        Ok(serde_json::json!({
+            "symbol": symbol.to_lowercase(),
+            "source": "sina_poll+daily",
+            "open_interest": oi,
+            "warehouse": warehouse,
+            "basis": basis,
+            "volume_1d": vol_1d,
+            "note": "持仓来自新浪 Tick；价差为最新价相对最近日 K 收盘的估算"
+        }))
+    }
+
     async fn fetch_daily(
         &self,
         ak_sym: &str,

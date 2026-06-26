@@ -1,6 +1,7 @@
 //! Rust 后端集成测试（真实网络 + 本地 DB），评估 Command 层完成度。
 
-use app_lib::adapters::{AkshareClient, JinshiClient, LlmRouter};
+use app_lib::adapters::{AkshareClient, JinshiClient};
+use app_lib::testing::bootstrap_test_state;
 use app_lib::config::Config;
 use app_lib::db::Database;
 use app_lib::engine::indicator;
@@ -291,6 +292,7 @@ async fn reports_db_crud() {
         tags: vec![],
         dimension_summary: Some(serde_json::json!({"demand": ["测试要点"]})),
         news_ids: vec!["news-1".into()],
+        anomaly_reason: None,
     };
     db.save_report(&report).expect("save report");
     let loaded = db.get_report("test-id").expect("get").expect("found");
@@ -319,6 +321,7 @@ async fn dimension_facts_roundtrip() {
             "inventory": ["社会库存下降"]
         })),
         news_ids: vec![],
+        anomaly_reason: None,
     };
     db.save_report(&report).expect("save report");
     let facts = facts_from_dimension_summary(
@@ -357,12 +360,12 @@ async fn followup_messages_roundtrip() {
 
 #[tokio::test]
 async fn llm_health_if_configured() {
-    let config = Config::load();
-    if config.llm_providers.is_empty() {
+    let state = bootstrap_test_state().await;
+    let llm = state.llm_snapshot();
+    if llm.available_providers().is_empty() {
         eprintln!("SKIP: no LLM API key configured");
         return;
     }
-    let llm = LlmRouter::new(config.llm_providers, config.default_llm_provider);
     let health = llm.health().await;
     assert!(!health.is_empty());
 }

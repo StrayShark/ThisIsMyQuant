@@ -18,6 +18,12 @@ const DEFAULT_HEADERS: [(&str, &str); 3] = [
     ("User-Agent", "Mozilla/5.0 (compatible; ThisIsMyQuant/0.1)"),
 ];
 
+#[derive(Clone, Default)]
+struct CalendarMeta {
+    fetched_at: Option<f64>,
+    event_count: u32,
+}
+
 #[derive(Clone)]
 pub struct JinshiClient {
     http: Client,
@@ -28,6 +34,7 @@ pub struct JinshiClient {
     connected: bool,
     cache: std::sync::Arc<Mutex<HashMap<i64, (f64, Vec<NewsItem>)>>>,
     calendar_cache: std::sync::Arc<Mutex<HashMap<String, (f64, Vec<CalendarEvent>)>>>,
+    calendar_meta: std::sync::Arc<Mutex<CalendarMeta>>,
 }
 
 impl JinshiClient {
@@ -41,6 +48,29 @@ impl JinshiClient {
             connected: false,
             cache: std::sync::Arc::new(Mutex::new(HashMap::new())),
             calendar_cache: std::sync::Arc::new(Mutex::new(HashMap::new())),
+            calendar_meta: std::sync::Arc::new(Mutex::new(CalendarMeta::default())),
+        }
+    }
+
+    pub fn calendar_status(&self) -> (bool, Option<String>, u32) {
+        let meta = self.calendar_meta.lock().ok();
+        let Some(m) = meta else {
+            return (false, None, 0);
+        };
+        let ready = m.event_count > 0;
+        let fetched_at = m.fetched_at.map(|ts| {
+            chrono::DateTime::from_timestamp(ts as i64, 0)
+                .map(|dt| dt.to_rfc3339())
+                .unwrap_or_else(|| ts.to_string())
+        });
+        (ready, fetched_at, m.event_count)
+    }
+
+    pub fn sync_config(&mut self, config: &Config) {
+        self.enabled = config.jinshi_enabled;
+        self.cache_ttl = config.jinshi_cache_ttl;
+        if !self.enabled {
+            self.connected = false;
         }
     }
 
@@ -146,6 +176,10 @@ impl JinshiClient {
         .await?;
         if let Ok(mut cache) = self.calendar_cache.lock() {
             cache.insert(cache_key, (now, events.clone()));
+        }
+        if let Ok(mut meta) = self.calendar_meta.lock() {
+            meta.fetched_at = Some(now);
+            meta.event_count = events.len() as u32;
         }
         Ok(events)
     }

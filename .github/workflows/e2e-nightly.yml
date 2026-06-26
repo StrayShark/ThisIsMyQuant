@@ -1,0 +1,61 @@
+name: E2E Nightly (Client Live)
+
+on:
+  schedule:
+    - cron: "0 16 * * 1-5"   # UTC 16:00 ≈ 北京时间次日 0:00（工作日）
+  workflow_dispatch:
+
+jobs:
+  client-live:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright
+        working-directory: frontend
+        run: pnpm exec playwright install chromium
+
+      - name: Sync LLM keys from secrets
+        env:
+          DOUBAO_API_KEY: ${{ secrets.DOUBAO_API_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          JIN10_MCP_TOKEN: ${{ secrets.JIN10_MCP_TOKEN }}
+        run: |
+          cp .env.example .env 2>/dev/null || touch .env
+          for key in DOUBAO_API_KEY MINIMAX_API_KEY JIN10_MCP_TOKEN; do
+            val="${!key:-}"
+            if [ -n "$val" ]; then
+              if grep -q "^${key}=" .env; then
+                sed -i '' "s|^${key}=.*|${key}=${val}|" .env
+              else
+                echo "${key}=${val}" >> .env
+              fi
+            fi
+          done
+          if [ -z "${DOUBAO_API_KEY:-}" ] && [ -z "${MINIMAX_API_KEY:-}" ]; then
+            echo "SKIP: no LLM secrets configured"
+            exit 0
+          fi
+
+      - name: Client Live E2E
+        run: bash scripts/e2e-client.sh

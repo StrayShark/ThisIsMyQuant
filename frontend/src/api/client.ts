@@ -11,8 +11,10 @@ import type {
   KLine,
   CalendarEvent,
   NewsItemView,
+  NewsRecord,
 } from "@/types";
 import { e2eMockApi } from "@/api/e2e-mock";
+import { useAppStore } from "@/app/store";
 
 const E2E_MOCK = import.meta.env.VITE_E2E_MOCK === "true";
 
@@ -28,6 +30,16 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 function unwrap<T>(res: ApiResponse<T>): T {
   if (res.code !== 0 || res.data === null) {
     throw new Error(res.message || "API error");
+  }
+  return res.data;
+}
+
+async function unwrapCalendar(res: ApiResponse<CalendarEvent[]>): Promise<CalendarEvent[]> {
+  if (res.code !== 0 || res.data === null) {
+    throw new Error(res.message || "API error");
+  }
+  if (res.message && res.message !== "ok") {
+    useAppStore.getState().showToast(res.message);
   }
   return res.data;
 }
@@ -61,18 +73,30 @@ const liveApi = {
       })
     ),
 
+  listNewsByIds: async (ids: string[]) =>
+    unwrap(await invoke<ApiResponse<NewsItemView[]>>("list_news_by_ids", { ids })),
+
   listCalendarEvents: async (params?: {
     start?: string;
     end?: string;
     min_star?: number;
     country?: string;
+    keyword?: string;
   }) =>
-    unwrap(
+    unwrapCalendar(
       await invoke<ApiResponse<CalendarEvent[]>>("list_calendar_events", {
         start: params?.start ?? null,
         end: params?.end ?? null,
         min_star: params?.min_star ?? null,
         country: params?.country ?? null,
+        keyword: params?.keyword ?? null,
+      })
+    ),
+
+  listUnclassifiedNews: async (limit?: number) =>
+    unwrap(
+      await invoke<ApiResponse<NewsRecord[]>>("list_unclassified_news", {
+        limit: limit ?? null,
       })
     ),
 
@@ -129,12 +153,119 @@ const liveApi = {
   getReport: async (id: string) =>
     unwrap(await invoke<ApiResponse<AnalysisReport>>("get_report", { report_id: id })),
 
-  getSettings: async () => unwrap(await invoke<ApiResponse<AppSettings>>("get_settings")),
-
   marketSubscribe: async (symbols: string[]) =>
     unwrap(
       await invoke<ApiResponse<{ subscribed: string[] }>>("market_subscribe", { symbols })
     ),
+
+  marketUnsubscribe: async (symbols: string[]) =>
+    unwrap(
+      await invoke<ApiResponse<{ unsubscribed: string[] }>>("market_unsubscribe", { symbols })
+    ),
+
+  getRuntimeStatus: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").RuntimeStatus>>("get_runtime_status")),
+
+  getSymbolContext: async (symbol: string) =>
+    unwrap(
+      await invoke<ApiResponse<Record<string, unknown>>>("get_symbol_context", { symbol })
+    ),
+
+  getSettings: async () => unwrap(await invoke<ApiResponse<AppSettings>>("get_settings")),
+
+  getLlmSetup: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").LlmSetupStatus>>("get_llm_setup")),
+
+  saveLlmSetup: async (payload: {
+    credentials: import("@/types").LlmCredentialInput[];
+    default_provider: string;
+  }) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").LlmSetupStatus>>("save_llm_setup", {
+        payload,
+      })
+    ),
+
+  getUserPreferences: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").UserPreferences>>("get_user_preferences")),
+
+  saveUserPreferences: async (prefs: import("@/types").UserPreferences) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").UserPreferences>>("save_user_preferences", {
+        prefs,
+      })
+    ),
+
+  reloadConfig: async () => unwrap(await invoke<ApiResponse<AppSettings>>("reload_config")),
+
+  exportKlinesCsv: async (params: { symbol: string; interval: string; limit?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<string>>("export_klines_csv", {
+        symbol: params.symbol,
+        interval: params.interval,
+        limit: params.limit ?? null,
+      })
+    ),
+
+  exportReportsCsv: async (params?: { symbol?: string; limit?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<string>>("export_reports_csv", {
+        symbol: params?.symbol ?? null,
+        limit: params?.limit ?? null,
+      })
+    ),
+
+  importKlinesCsv: async (params: { csv: string; symbol: string; interval: string }) =>
+    unwrap(
+      await invoke<ApiResponse<{ imported: number }>>("import_klines_csv", {
+        csv: params.csv,
+        symbol: params.symbol,
+        interval: params.interval,
+      })
+    ),
+
+  reclassifyNews: async (params: { news_ids: string[]; provider?: string; use_llm?: boolean }) =>
+    unwrap(
+      await invoke<ApiResponse<{ labels_saved: number }>>("reclassify_news", {
+        news_ids: params.news_ids,
+        provider: params.provider ?? null,
+        use_llm: params.use_llm ?? null,
+      })
+    ),
+
+  triggerBatchAnalysis: async (params: {
+    symbols: string[];
+    trigger?: string;
+    provider?: string;
+  }) =>
+    unwrap(
+      await invoke<ApiResponse<{ started: boolean; total: number }>>("trigger_batch_analysis", {
+        symbols: params.symbols,
+        trigger: params.trigger ?? null,
+        provider: params.provider ?? null,
+      })
+    ),
+
+  triggerComprehensiveAnalysis: async () =>
+    unwrap(
+      await invoke<ApiResponse<{ started: boolean; total: number; includes_data_fetch: boolean }>>(
+        "trigger_comprehensive_analysis"
+      )
+    ),
+
+  triggerDataFetch: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").DataFetchSummary>>("trigger_data_fetch")),
+
+  getScheduleStatus: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").ScheduleStatus>>("get_schedule_status")),
+
+  getBatchStatus: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").BatchJobStatus>>("get_batch_status")),
+
+  getStatusDashboard: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").StatusDashboard>>("get_status_dashboard")),
+
+  probeOllama: async () => unwrap(await invoke<ApiResponse<boolean>>("probe_ollama")),
 
   triggerAnalysis: async (params: { symbol: string; trigger?: string; provider?: string }) =>
     unwrap(

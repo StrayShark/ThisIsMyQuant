@@ -125,3 +125,101 @@ export function bollinger(
   }
   return { upper, middle, lower };
 }
+
+export function extractOhlc(klines: KLine[]): {
+  times: Time[];
+  highs: number[];
+  lows: number[];
+  closes: number[];
+} {
+  const times = klines.map(
+    (k) => Math.floor(new Date(k.start_time).getTime() / 1000) as Time
+  );
+  return {
+    times,
+    highs: klines.map((k) => k.high),
+    lows: klines.map((k) => k.low),
+    closes: klines.map((k) => k.close),
+  };
+}
+
+/** KDJ (9,3,3) — 与常见行情软件一致 */
+export function kdj(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  times: Time[],
+  period = 9
+): { k: LinePoint[]; d: LinePoint[]; j: LinePoint[] } {
+  const kLine: LinePoint[] = [];
+  const dLine: LinePoint[] = [];
+  const jLine: LinePoint[] = [];
+  if (closes.length < period) return { k: kLine, d: dLine, j: jLine };
+
+  let k = 50;
+  let d = 50;
+  for (let i = period - 1; i < closes.length; i++) {
+    const sliceH = highs.slice(i - period + 1, i + 1);
+    const sliceL = lows.slice(i - period + 1, i + 1);
+    const high = Math.max(...sliceH);
+    const low = Math.min(...sliceL);
+    const close = closes[i];
+    const rsv = high === low ? 50 : ((close - low) / (high - low)) * 100;
+    k = (2 / 3) * k + (1 / 3) * rsv;
+    d = (2 / 3) * d + (1 / 3) * k;
+    const j = 3 * k - 2 * d;
+    const t = times[i];
+    kLine.push({ time: t, value: k });
+    dLine.push({ time: t, value: d });
+    jLine.push({ time: t, value: j });
+  }
+  return { k: kLine, d: dLine, j: jLine };
+}
+
+/** Parabolic SAR (step 0.02, max 0.2) */
+export function sar(
+  highs: number[],
+  lows: number[],
+  times: Time[],
+  step = 0.02,
+  maxStep = 0.2
+): LinePoint[] {
+  const out: LinePoint[] = [];
+  if (highs.length < 2) return out;
+
+  let isUp = true;
+  let af = step;
+  let ep = highs[0];
+  let sarVal = lows[0];
+
+  for (let i = 1; i < highs.length; i++) {
+    const prevSar = sarVal;
+    sarVal = prevSar + af * (ep - prevSar);
+
+    if (isUp) {
+      sarVal = Math.min(sarVal, lows[i - 1], i >= 2 ? lows[i - 2] : lows[i - 1]);
+      if (lows[i] < sarVal) {
+        isUp = false;
+        sarVal = ep;
+        ep = lows[i];
+        af = step;
+      } else if (highs[i] > ep) {
+        ep = highs[i];
+        af = Math.min(af + step, maxStep);
+      }
+    } else {
+      sarVal = Math.max(sarVal, highs[i - 1], i >= 2 ? highs[i - 2] : highs[i - 1]);
+      if (highs[i] > sarVal) {
+        isUp = true;
+        sarVal = ep;
+        ep = highs[i];
+        af = step;
+      } else if (lows[i] < ep) {
+        ep = lows[i];
+        af = Math.min(af + step, maxStep);
+      }
+    }
+    out.push({ time: times[i], value: sarVal });
+  }
+  return out;
+}

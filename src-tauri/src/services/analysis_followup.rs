@@ -15,7 +15,7 @@ pub async fn run_followup(
     question: &str,
     provider: Option<&str>,
 ) -> Result<FollowupMessage, String> {
-    if state.llm.available_providers().is_empty() {
+    if state.llm_snapshot().available_providers().is_empty() {
         return Err("no LLM provider configured".into());
     }
     let question = question.trim();
@@ -53,8 +53,8 @@ pub async fn run_followup(
     let prompt = render_followup_prompt(&report, &facts, &news, question);
     let mut answer = String::new();
 
-    state
-        .llm
+    let llm = state.llm_snapshot();
+    llm
         .stream(
             &prompt,
             FOLLOWUP_SYSTEM_PROMPT,
@@ -72,7 +72,7 @@ pub async fn run_followup(
 
     let provider_name = provider
         .map(String::from)
-        .unwrap_or_else(|| state.llm.default_provider().to_string());
+        .unwrap_or_else(|| state.config().default_llm_provider.clone());
 
     let msg = FollowupMessage {
         id: Uuid::new_v4().to_string(),

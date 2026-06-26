@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::engine::{
     build_context, collect_news_ids, facts_from_dimension_summary, parse_llm_report,
-    render_prompt, summarize_context, SYSTEM_PROMPT,
+    render_prompt, summarize_context, PROMPT_VERSION, SYSTEM_PROMPT,
 };
 use crate::models::{AnalysisDoneEvent, AnalysisReport, NotificationEvent};
 use crate::state::AppState;
@@ -18,32 +18,31 @@ pub async fn run_analysis(
     trigger: &str,
     provider: Option<&str>,
     stream: bool,
+    anomaly_reason: Option<&str>,
 ) -> Result<AnalysisReport, String> {
-    if state.llm.available_providers().is_empty() {
+    if state.llm_snapshot().available_providers().is_empty() {
         return Err("no LLM provider configured".into());
     }
 
+    let jinshi_client = if state.config().jinshi_enabled {
+        Some(state.jinshi.lock().await.clone())
+    } else {
+        None
+    };
     let ctx = build_context(
         &state.akshare,
-        if state.config.jinshi_enabled {
-            Some(&state.jinshi)
-        } else {
-            None
-        },
+        jinshi_client.as_ref(),
         Some(state.db.as_ref()),
         symbol,
     )
     .await;
     let prompt = render_prompt(&ctx, trigger);
-    let provider_name = provider
-        .map(String::from)
-        .unwrap_or_else(|| state.llm.default_provider().to_string());
 
-    let raw_content = if stream {
+    let llm = state.llm_snapshot();
+    let (raw_content, provider_name) = if stream {
         let app = app.ok_or("stream requires app handle")?;
         let mut chunks = String::new();
-        state
-            .llm
+        let used = llm
             .stream(
                 &prompt,
                 SYSTEM_PROMPT,
@@ -58,11 +57,9 @@ pub async fn run_analysis(
             )
             .await
             .map_err(|e| e.to_string())?;
-        chunks
+        (chunks, used)
     } else {
-        state
-            .llm
-            .complete(&prompt, SYSTEM_PROMPT, provider.as_deref())
+        llm.complete_with_provider(&prompt, SYSTEM_PROMPT, provider.as_deref())
             .await
             .map_err(|e| e.to_string())?
     };
@@ -75,13 +72,14 @@ pub async fn run_analysis(
         symbol: symbol.to_string(),
         trigger: trigger.to_string(),
         provider: provider_name,
-        prompt_version: "v2".into(),
+        prompt_version: PROMPT_VERSION.into(),
         context_summary: summarize_context(&ctx),
         content: parsed.content,
         created_at: Utc::now().to_rfc3339(),
         tags: vec![],
         dimension_summary: parsed.dimension_summary,
         news_ids,
+        anomaly_reason: anomaly_reason.map(String::from),
     };
     state.db.save_report(&report).map_err(|e| e.to_string())?;
 

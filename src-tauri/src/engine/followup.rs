@@ -169,6 +169,7 @@ mod tests {
             tags: vec![],
             dimension_summary: None,
             news_ids: vec![],
+            anomaly_reason: None,
         };
         let prompt = render_followup_prompt(&report, &[], &[], "库存为何下降？");
         assert!(prompt.contains("库存为何下降？"));

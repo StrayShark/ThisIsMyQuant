@@ -1,3 +1,11 @@
+pub mod user_prefs;
+pub mod llm_catalog;
+pub mod env_llm;
+
+pub use user_prefs::UserPreferences;
+pub use llm_catalog::{build_provider_config, template, LLM_CATALOG};
+pub use env_llm::{collect_llm_credentials_from_env_files, default_llm_provider_from_env_files};
+
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -18,10 +26,30 @@ pub struct Config {
     pub jinshi_poll_interval: f64,
     pub default_llm_provider: String,
     pub llm_providers: Vec<LlmProviderConfig>,
-    pub daily_analysis_cron: String,
-    pub realtime_analysis_interval: u64,
+    /// 定时任务周期内 LLM 分析使用的 trigger（scheduled / tomorrow / short_term 等）
+    pub schedule_analysis_trigger: String,
+    /// 每日固定时刻对 watchlist 跑 tomorrow 分析
+    pub daily_briefing_enabled: bool,
+    pub daily_briefing_hour: u8,
+    pub schedule_interval_hours: u64,
+    pub schedule_enabled: bool,
     pub liquidity: LiquidityConfig,
     pub news_classify: NewsClassifyConfig,
+    pub market_feed: String,
+    pub anomaly_enabled: bool,
+    pub anomaly_price_pct: f64,
+    pub anomaly_window_secs: i64,
+    pub anomaly_cooldown_secs: u64,
+    pub backfill_days_daily: i64,
+    pub backfill_days_minute: i64,
+    pub encryption_key: String,
+    pub retention_days_klines: i64,
+    pub retention_days_ticks: i64,
+    pub ticks_enabled: bool,
+    pub calendar_reminder_enabled: bool,
+    pub calendar_reminder_mins: u64,
+    pub questdb_url: String,
+    pub database_backend: String,
 }
 
 #[derive(Debug, Clone)]
@@ -65,26 +93,38 @@ fn load_env_file(path: &Path) {
     }
 }
 
-fn env_bool(key: &str, default: bool) -> bool {
-    std::env::var(key)
-        .ok()
-        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(default)
-}
-
-fn env_f64(key: &str, default: f64) -> f64 {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
-
 fn env_str(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
+/// 行情源固定为 AKShare 轮询；若 .env 配置了已废弃的 ctp/simnow 会告警并忽略。
+pub fn resolve_market_feed(raw: &str) -> String {
+    let lower = raw.trim().to_lowercase();
+    if matches!(lower.as_str(), "ctp" | "simnow") {
+        log::warn!(
+            "MARKET_FEED={raw}: CTP/SimNow 已移除，已自动改用 akshare_poll"
+        );
+    } else if !lower.is_empty() && lower != "akshare_poll" {
+        log::warn!(
+            "MARKET_FEED={raw}: 未知行情源，已改用 akshare_poll"
+        );
+    }
+    "akshare_poll".into()
+}
+
 impl Config {
+    /// 从 .env 加载密钥/基础设施，运营项使用 `UserPreferences` 默认值。
     pub fn load() -> Self {
+        Self::load_with_preferences(UserPreferences::default())
+    }
+
+    pub fn load_with_preferences(prefs: UserPreferences) -> Self {
+        let mut cfg = Self::load_secrets();
+        prefs.normalize().apply_to(&mut cfg);
+        cfg
+    }
+
+    fn load_secrets() -> Self {
         let root = project_root();
         load_env_file(&root.join(".env"));
 
@@ -96,57 +136,16 @@ impl Config {
             root.join(path_str)
         };
 
-        let watchlist_raw = env_str("WATCHLIST", "rb2510,au2512,IF2512");
-        let watchlist: Vec<String> = watchlist_raw
-            .split(',')
-            .map(|s| s.trim().to_lowercase())
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        let mut llm_providers = Vec::new();
-        let pairs: [(&str, &str, &str, &str); 5] = [
-            ("DOUBAO", "DOUBAO_API_KEY", "DOUBAO_BASE_URL", "DOUBAO_MODEL"),
-            ("MINIMAX", "MINIMAX_API_KEY", "MINIMAX_BASE_URL", "MINIMAX_MODEL"),
-            ("OPENAI", "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL"),
-            ("DEEPSEEK", "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL"),
-            ("QWEN", "QWEN_API_KEY", "QWEN_BASE_URL", "QWEN_MODEL"),
-        ];
-        let model_defaults: [(&str, &str); 5] = [
-            ("DOUBAO", "doubao-seed-2.0-pro"),
-            ("MINIMAX", "MiniMax-M3"),
-            ("OPENAI", "gpt-4o-mini"),
-            ("DEEPSEEK", "deepseek-chat"),
-            ("QWEN", "qwen-plus"),
-        ];
-        let url_defaults: [(&str, &str); 5] = [
-            ("DOUBAO", "https://ark.cn-beijing.volces.com/api/v3"),
-            ("MINIMAX", "https://api.minimaxi.com/v1"),
-            ("OPENAI", "https://api.openai.com/v1"),
-            ("DEEPSEEK", "https://api.deepseek.com"),
-            ("QWEN", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
-        ];
-        for (i, (name, key_var, url_var, model_var)) in pairs.iter().enumerate() {
-            let key = env_str(key_var, "");
-            if key.is_empty() {
-                continue;
-            }
-            let (_, default_model) = model_defaults[i];
-            let (_, default_url) = url_defaults[i];
-            llm_providers.push(LlmProviderConfig {
-                name: name.to_lowercase(),
-                api_key: key,
-                base_url: env_str(url_var, default_url),
-                model: env_str(model_var, default_model),
-            });
-        }
+        let watchlist: Vec<String> = Vec::new();
+        let llm_providers: Vec<LlmProviderConfig> = Vec::new();
 
         Self {
             database_path,
-            akshare_enabled: env_bool("AKSHARE_ENABLED", true),
-            akshare_realtime_enabled: env_bool("AKSHARE_REALTIME_ENABLED", true),
-            realtime_poll_interval: env_f64("REALTIME_POLL_INTERVAL", 5.0),
+            akshare_enabled: true,
+            akshare_realtime_enabled: true,
+            realtime_poll_interval: 5.0,
             watchlist,
-            jinshi_enabled: env_bool("JINSHI_ENABLED", true),
+            jinshi_enabled: true,
             jinshi_api_base: env_str("JINSHI_API_BASE", "https://mp-api.jin10.com"),
             jinshi_rili_api_base: env_str(
                 "JINSHI_RILI_API_BASE",
@@ -163,21 +162,56 @@ impl Config {
             },
             jin10_mcp_server_url: env_str("JIN10_MCP_SERVER_URL", "https://mcp.jin10.com/mcp"),
             jin10_mcp_protocol_version: env_str("JIN10_MCP_PROTOCOL_VERSION", "2025-11-25"),
-            jinshi_cache_ttl: env_f64("JINSHI_CACHE_TTL", 300.0),
-            jinshi_poll_interval: env_f64("JINSHI_POLL_INTERVAL", 300.0),
-            default_llm_provider: env_str("DEFAULT_LLM_PROVIDER", "doubao"),
+            jinshi_cache_ttl: 300.0,
+            jinshi_poll_interval: 300.0,
+            default_llm_provider: "doubao".into(),
             llm_providers,
-            daily_analysis_cron: env_str("DAILY_ANALYSIS_CRON", "0 17"),
-            realtime_analysis_interval: env_f64("REALTIME_ANALYSIS_INTERVAL", 300.0) as u64,
+            schedule_analysis_trigger: "scheduled".into(),
+            daily_briefing_enabled: true,
+            daily_briefing_hour: 17,
+            schedule_interval_hours: 6,
+            schedule_enabled: true,
             liquidity: LiquidityConfig {
-                min_volume_20d: env_f64("LIQUIDITY_MIN_VOLUME_20D", 5000.0),
-                min_turnover_20d: env_f64("LIQUIDITY_MIN_TURNOVER_20D", 500_000_000.0),
+                min_volume_20d: 5000.0,
+                min_turnover_20d: 500_000_000.0,
             },
             news_classify: NewsClassifyConfig {
-                enabled: env_bool("NEWS_CLASSIFY_LLM_ENABLED", true),
-                provider: env_str("NEWS_CLASSIFY_LLM", ""),
-                batch_size: env_f64("NEWS_CLASSIFY_BATCH", 10.0) as usize,
+                enabled: true,
+                provider: String::new(),
+                batch_size: 10,
             },
+            market_feed: "akshare_poll".into(),
+            anomaly_enabled: true,
+            anomaly_price_pct: 1.5,
+            anomaly_window_secs: 300,
+            anomaly_cooldown_secs: 900,
+            backfill_days_daily: 120,
+            backfill_days_minute: 5,
+            encryption_key: env_str("ENCRYPTION_KEY", ""),
+            retention_days_klines: 365,
+            retention_days_ticks: 14,
+            ticks_enabled: true,
+            calendar_reminder_enabled: true,
+            calendar_reminder_mins: 30,
+            questdb_url: String::new(),
+            database_backend: "sqlite".into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn akshare_is_default_feed() {
+        assert_eq!(resolve_market_feed(""), "akshare_poll");
+        assert_eq!(resolve_market_feed("akshare_poll"), "akshare_poll");
+    }
+
+    #[test]
+    fn deprecated_ctp_feed_falls_back() {
+        assert_eq!(resolve_market_feed("ctp"), "akshare_poll");
+        assert_eq!(resolve_market_feed("simnow"), "akshare_poll");
     }
 }

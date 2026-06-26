@@ -68,10 +68,12 @@ test.describe("报告与设置", () => {
 
   test("设置页展示数据源与大模型配置", async ({ page }) => {
     await page.goto("/#/settings");
-    await expect(page.getByText("AKShare K 线")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText("金十资讯")).toBeVisible();
-    await expect(page.getByText("大模型")).toBeVisible();
-    await expect(page.getByText("刷新配置")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "设置" })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("AKShare K 线").first()).toBeVisible();
+    await expect(page.getByText("金十资讯").first()).toBeVisible();
+    await expect(page.getByText("大模型").first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "配置 LLM API Key" })).toBeVisible();
+    await expect(page.getByText("重载 .env（金十等）")).toBeVisible();
   });
 });
 

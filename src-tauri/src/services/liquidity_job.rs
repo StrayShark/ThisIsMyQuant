@@ -27,7 +27,7 @@ async fn refresh_all(state: &AppState) -> AppResult<()> {
         return Ok(());
     }
 
-    let cfg = state.config.liquidity.clone();
+    let cfg = state.config().liquidity.clone();
     let end = Utc::now();
     let start = end - Duration::days(35);
     let mut updated = 0usize;

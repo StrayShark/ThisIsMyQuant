@@ -91,3 +91,38 @@ fn macd(data: &[f64]) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let hist: Vec<f64> = dif.iter().zip(dea.iter()).map(|(d, e)| 2.0 * (d - e)).collect();
     (dif, dea, hist)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ma_matches_expected_tail() {
+        let data = vec![
+            10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0,
+        ];
+        let out = ma(&data, 5);
+        // MA5 at index 4 = (10+11+12+13+14)/5 = 12
+        assert!((out[4] - 12.0).abs() < 1e-9);
+        // MA5 at last = (16+17+18+19+20)/5 = 18
+        assert!((out[10] - 18.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn ema_seed_and_smooth() {
+        let data = vec![10.0, 11.0, 12.0, 13.0];
+        let out = ema(&data, 3);
+        assert!((out[0] - 10.0).abs() < 1e-9);
+        let alpha = 2.0 / 4.0;
+        let expected1 = alpha * 11.0 + (1.0 - alpha) * 10.0;
+        assert!((out[1] - expected1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn macd_hist_is_double_dif_dea_spread() {
+        let data: Vec<f64> = (1..=40).map(|i| i as f64).collect();
+        let (dif, dea, hist) = macd(&data);
+        let i = data.len() - 1;
+        assert!((hist[i] - 2.0 * (dif[i] - dea[i])).abs() < 1e-9);
+    }
+}

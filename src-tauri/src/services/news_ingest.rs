@@ -70,7 +70,19 @@ async fn classify_pending_with_llm(deps: &IngestDeps<'_>) -> AppResult<usize> {
         log::debug!("LLM classify returned no labels for {} items", pending.len());
         return Ok(0);
     }
-    deps.db.save_classifications(&labels)
+    let merged: Vec<_> = pending
+        .iter()
+        .flat_map(|news| {
+            let rule = news_classifier::classify(news);
+            let llm_for_news: Vec<_> = labels
+                .iter()
+                .filter(|l| l.news_id == news.id)
+                .cloned()
+                .collect();
+            news_classifier::merge_classifications(rule, llm_for_news)
+        })
+        .collect();
+    deps.db.save_classifications(&merged)
 }
 
 fn classify_provider<'a>(deps: &'a IngestDeps<'_>) -> Option<&'a str> {

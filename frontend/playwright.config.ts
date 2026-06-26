@@ -13,11 +13,20 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "chromium",
+      name: "ui-mock",
+      testMatch: /ui-mock\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         channel: "chrome",
       },
     },
   ],
+  webServer: {
+    command: "pnpm dev",
+    url: "http://localhost:5173",
+    reuseExistingServer: !process.env.CI,
+    env: {
+      VITE_E2E_MOCK: "true",
+    },
+  },
 });

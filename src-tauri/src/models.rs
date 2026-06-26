@@ -27,6 +27,16 @@ impl<T> ApiResponse<T> {
             trace_id: uuid::Uuid::new_v4().to_string(),
         }
     }
+
+    /// 成功返回数据，但 message 携带警告（如日历降级为本地缓存）。
+    pub fn ok_warn(data: T, message: impl Into<String>) -> Self {
+        Self {
+            code: 0,
+            message: message.into(),
+            data: Some(data),
+            trace_id: uuid::Uuid::new_v4().to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +87,14 @@ pub struct KLine {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TickUpdateEvent {
+    pub symbol: String,
+    pub last_price: f64,
+    pub volume: i64,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisReport {
     pub id: String,
     pub symbol: String,
@@ -91,6 +109,8 @@ pub struct AnalysisReport {
     pub dimension_summary: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub news_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anomaly_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +185,8 @@ pub struct HealthResponse {
     pub news_poll: Option<NewsPollStatus>,
     pub realtime: RealtimeHealth,
     pub jinshi: JinshiHealth,
+    #[serde(default)]
+    pub llm_last_errors: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -178,6 +200,7 @@ pub struct PollStatus {
     pub interval: f64,
     pub symbols: Vec<String>,
     pub symbol_count: usize,
+    pub feed_source: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -196,6 +219,9 @@ pub struct RealtimeHealth {
 pub struct JinshiHealth {
     pub enabled: bool,
     pub connected: bool,
+    pub calendar_ready: bool,
+    pub calendar_fetched_at: Option<String>,
+    pub calendar_cached_events: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -294,6 +320,41 @@ pub struct LiquiditySnapshot {
     pub scored_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmProviderSetupView {
+    pub name: String,
+    pub label: String,
+    pub default_base_url: String,
+    pub default_model: String,
+    pub key_required: bool,
+    pub configured: bool,
+    pub api_key_masked: String,
+    pub base_url: String,
+    pub model: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LlmSetupStatus {
+    pub providers: Vec<LlmProviderSetupView>,
+    pub setup_required: bool,
+    pub default_provider: String,
+    pub encryption_ready: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LlmCredentialInput {
+    pub provider: String,
+    pub api_key: String,
+    pub base_url: Option<String>,
+    pub model: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SaveLlmSetupPayload {
+    pub credentials: Vec<LlmCredentialInput>,
+    pub default_provider: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AppSettingsView {
     pub akshare_enabled: bool,
@@ -304,13 +365,90 @@ pub struct AppSettingsView {
     pub jinshi_poll_interval: f64,
     pub default_llm_provider: String,
     pub llm_providers: Vec<String>,
-    pub daily_analysis_cron: String,
-    pub realtime_analysis_interval: u64,
-    pub scheduler_daily_running: bool,
-    pub scheduler_realtime_running: bool,
+    pub schedule_analysis_trigger: String,
+    pub daily_briefing_enabled: bool,
+    pub daily_briefing_hour: u8,
+    pub schedule_interval_hours: u64,
+    pub schedule_enabled: bool,
+    pub scheduler_running: bool,
     pub database_path: String,
     pub news_classify_enabled: bool,
     pub news_classify_batch: usize,
+    pub market_feed: String,
+    pub anomaly_enabled: bool,
+    pub anomaly_price_pct: f64,
+    pub anomaly_window_secs: i64,
+    pub anomaly_cooldown_secs: u64,
+    pub backfill_days_daily: i64,
+    pub backfill_days_minute: i64,
+    pub encryption_configured: bool,
+    pub llm_keys_masked: Vec<(String, String)>,
+    pub ollama_configured: bool,
+    pub llm_last_errors: std::collections::HashMap<String, String>,
+    pub ticks_enabled: bool,
+    pub retention_days_klines: i64,
+    pub retention_days_ticks: i64,
+    pub calendar_reminder_enabled: bool,
+    pub database_backend: String,
+    pub questdb_configured: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct BackfillStatus {
+    pub running: bool,
+    pub completed: usize,
+    pub total: usize,
+    pub current_symbol: Option<String>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct DataFetchSummary {
+    pub calendar_events: usize,
+    pub news_items: usize,
+    pub news_labels: usize,
+    pub klines_symbols: usize,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct ScheduleStatus {
+    pub enabled: bool,
+    pub interval_hours: u64,
+    pub cycle_in_progress: bool,
+    pub last_cycle_at: Option<String>,
+    pub last_data_fetch: Option<DataFetchSummary>,
+    pub last_analysis_completed: usize,
+    pub last_analysis_total: usize,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct RuntimeStatusView {
+    pub poll: Option<PollStatus>,
+    pub backfill: BackfillStatus,
+    pub feed_source: Option<String>,
+    pub schedule: ScheduleStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct BatchJobStatus {
+    pub running: bool,
+    pub total: usize,
+    pub completed: usize,
+    pub current_symbol: Option<String>,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StatusDashboardView {
+    pub runtime: RuntimeStatusView,
+    pub llm_health: std::collections::HashMap<String, bool>,
+    pub llm_last_errors: std::collections::HashMap<String, String>,
+    pub questdb_configured: bool,
+    pub questdb_online: bool,
+    pub overseas_stub: serde_json::Value,
+    pub batch_job: BatchJobStatus,
+    pub prompt_version: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

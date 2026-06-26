@@ -8,6 +8,28 @@ use crate::models::{NewsClassification, NewsRecord};
 
 const MIN_CONFIDENCE: f32 = 0.5;
 
+/// 合并规则与 LLM 分类结果，同键取较高置信度；置信度相同时优先 LLM。
+pub fn merge_classifications(
+    rule: Vec<NewsClassification>,
+    llm: Vec<NewsClassification>,
+) -> Vec<NewsClassification> {
+    let mut map: HashMap<(String, String), NewsClassification> = HashMap::new();
+    for label in rule.into_iter().chain(llm) {
+        let key = (label.symbol.clone(), label.dimension_code.clone());
+        map
+            .entry(key)
+            .and_modify(|existing| {
+                if label.confidence > existing.confidence
+                    || (label.confidence == existing.confidence && label.method == "llm")
+                {
+                    *existing = label.clone();
+                }
+            })
+            .or_insert(label);
+    }
+    map.into_values().collect()
+}
+
 /// 对单条资讯做规则分类，返回待写入 DB 的标签。
 pub fn classify(news: &NewsRecord) -> Vec<NewsClassification> {
     let text = format!("{} {}", news.title, news.summary);
@@ -40,6 +62,9 @@ pub fn classify(news: &NewsRecord) -> Vec<NewsClassification> {
                 }
 
                 if score >= MIN_CONFIDENCE {
+                    if !dimension_allowed(&text, dim_code) {
+                        continue;
+                    }
                     let key = (product.symbol.to_uppercase(), dim_code.to_string());
                     scores
                         .entry(key)
@@ -48,6 +73,10 @@ pub fn classify(news: &NewsRecord) -> Vec<NewsClassification> {
                 }
             }
         }
+    }
+
+    if scores.is_empty() {
+        append_macro_only_labels(&text, &mut scores);
     }
 
     let now = news.ingested_at.clone();
@@ -87,6 +116,74 @@ fn symbol_match(text: &str, product: &sectors::FutureProduct, sector: &ProductSe
         score += 0.5;
     }
     score.min(1.0)
+}
+
+/// 中美宏观边界：中国 CPI/LPR 归 macro，美国 CPI/非农归 overseas_finance。
+fn dimension_allowed(text: &str, dimension_code: &str) -> bool {
+    let china_macro = is_china_macro(text);
+    let us_macro = is_us_macro(text);
+
+    match dimension_code {
+        "macro" => !us_macro || china_macro,
+        "overseas_finance" => !china_macro || us_macro,
+        _ => true,
+    }
+}
+
+fn is_china_macro(text: &str) -> bool {
+    text.contains("中国CPI")
+        || text.contains("中国PPI")
+        || text.contains("LPR")
+        || text.contains("央行")
+        || text.contains("国家统计局")
+        || text.contains("财新")
+        || (text.contains("CPI") && text.contains("中国"))
+        || (text.contains("PPI") && text.contains("中国"))
+        || (text.contains("制造业PMI") && text.contains("中国"))
+}
+
+fn is_us_macro(text: &str) -> bool {
+    text.contains("美联储")
+        || text.contains("FOMC")
+        || text.contains("Fed")
+        || text.contains("鲍威尔")
+        || text.contains("Powell")
+        || text.contains("非农")
+        || text.contains("NFP")
+        || text.contains("美国CPI")
+        || text.contains("美国PPI")
+        || text.contains("美国就业")
+        || text.contains("美国通胀")
+        || (text.contains("CPI") && !text.contains("中国"))
+        || (text.contains("PPI") && !text.contains("中国"))
+}
+
+fn append_macro_only_labels(text: &str, scores: &mut HashMap<(String, String), f32>) {
+    let china = is_china_macro(text);
+    let us = is_us_macro(text);
+    if !china && !us {
+        return;
+    }
+
+    for sector in sectors::all_sectors() {
+        let dims = dimensions::sector_dimension_codes(&sector.code);
+        for product in &sector.products {
+            if product.default_tier == LiquidityTier::Excluded {
+                continue;
+            }
+            let sym = product.symbol.to_uppercase();
+            if china && dims.contains(&"macro") && dimension_allowed(text, "macro") {
+                scores
+                    .entry((sym.clone(), "macro".into()))
+                    .or_insert(0.72);
+            }
+            if us && dims.contains(&"overseas_finance") && dimension_allowed(text, "overseas_finance") {
+                scores
+                    .entry((sym, "overseas_finance".into()))
+                    .or_insert(0.72);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -155,9 +252,66 @@ mod tests {
     }
 
     #[test]
-    fn ignores_unrelated_without_keywords() {
-        let news = sample_news("无关娱乐新闻", "明星八卦", 52042);
+    fn classifies_china_cpi_as_macro_not_overseas() {
+        let news = sample_news(
+            "中国CPI同比上涨0.3%",
+            "国家统计局公布5月通胀数据",
+            52042,
+        );
         let labels = classify(&news);
-        assert!(labels.is_empty() || labels.iter().all(|l| l.confidence >= MIN_CONFIDENCE));
+        assert!(
+            labels.iter().any(|l| l.dimension_code == "macro"),
+            "expected macro for 中国CPI, got {:?}",
+            labels
+        );
+        assert!(
+            !labels.iter().any(|l| l.dimension_code == "overseas_finance"),
+            "中国CPI should not be overseas_finance, got {:?}",
+            labels
+        );
+    }
+
+    #[test]
+    fn classifies_lpr_as_macro() {
+        let news = sample_news(
+            "央行下调LPR 10个基点",
+            "1年期与5年期LPR同步下调，支持实体经济",
+            52042,
+        );
+        let labels = classify(&news);
+        assert!(
+            labels.iter().any(|l| l.dimension_code == "macro"),
+            "LPR should map to macro, got {:?}",
+            labels
+        );
+        assert!(
+            !labels.iter().any(|l| l.dimension_code == "overseas_finance"),
+            "LPR should not be overseas_finance, got {:?}",
+            labels
+        );
+    }
+
+    #[test]
+    fn merge_prefers_higher_confidence() {
+        let rule = vec![NewsClassification {
+            news_id: "n1".into(),
+            symbol: "AU0".into(),
+            dimension_code: "macro".into(),
+            confidence: 0.6,
+            method: "rule".into(),
+            created_at: "t".into(),
+        }];
+        let llm = vec![NewsClassification {
+            news_id: "n1".into(),
+            symbol: "AU0".into(),
+            dimension_code: "macro".into(),
+            confidence: 0.85,
+            method: "llm".into(),
+            created_at: "t".into(),
+        }];
+        let merged = merge_classifications(rule, llm);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].confidence, 0.85);
+        assert_eq!(merged[0].method, "llm");
     }
 }

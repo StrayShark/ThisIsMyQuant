@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tokio::task::JoinHandle;
 
@@ -8,10 +8,19 @@ use crate::db::Database;
 use crate::services::news_ingest::{ingest_poll, IngestDeps};
 
 pub struct NewsPollHandle {
-    _task: JoinHandle<()>,
+    task: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl NewsPollHandle {
+    pub fn abort(&self) {
+        if let Ok(mut guard) = self.task.lock() {
+            if let Some(handle) = guard.take() {
+                handle.abort();
+                log::info!("NewsPoll aborted");
+            }
+        }
+    }
+
     pub fn start(
         jinshi: JinshiClient,
         db: Arc<Database>,
@@ -22,7 +31,9 @@ impl NewsPollHandle {
         let classify_cfg = config.news_classify.clone();
         let default_provider = config.default_llm_provider.clone();
         let interval = interval_secs.max(30.0);
-        let task = tokio::spawn(async move {
+        let task_slot = Arc::new(Mutex::new(None));
+        let task_slot_c = task_slot.clone();
+        let handle = tokio::spawn(async move {
             let dur = tokio::time::Duration::from_secs_f64(interval);
             loop {
                 let deps = IngestDeps {
@@ -38,7 +49,8 @@ impl NewsPollHandle {
                 tokio::time::sleep(dur).await;
             }
         });
+        *task_slot_c.lock().unwrap_or_else(|e| e.into_inner()) = Some(handle);
         log::info!("NewsPoll started (ingest+rule+llm classify), interval={interval}s");
-        Self { _task: task }
+        Self { task: task_slot }
     }
 }

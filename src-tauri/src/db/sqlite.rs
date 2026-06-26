@@ -4,10 +4,11 @@ use std::sync::Mutex;
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
 
+use crate::config::UserPreferences;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AnalysisReport, Contract, DimensionFact, FollowupMessage, KLine, LiquiditySnapshot,
-    NewsClassification, NewsItemView, NewsClassificationView, NewsRecord, dt_to_iso,
+    AnalysisReport, CalendarEvent, Contract, DimensionFact, FollowupMessage, KLine, LiquiditySnapshot,
+    NewsClassification, NewsItemView, NewsClassificationView, NewsRecord, Tick, dt_to_iso,
 };
 use crate::engine::dimensions;
 
@@ -120,6 +121,41 @@ impl Database {
                 ON followup_messages(report_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_followup_symbol
                 ON followup_messages(symbol, created_at DESC);
+            CREATE TABLE IF NOT EXISTS calendar_cache (
+                cache_key TEXT PRIMARY KEY,
+                events_json TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                error_message TEXT
+            );
+            CREATE TABLE IF NOT EXISTS ticks (
+                symbol TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                last_price REAL,
+                volume INTEGER,
+                open_interest INTEGER,
+                bid_price REAL,
+                ask_price REAL,
+                PRIMARY KEY (symbol, timestamp)
+            );
+            CREATE INDEX IF NOT EXISTS idx_ticks_symbol_time
+                ON ticks(symbol, timestamp DESC);
+            CREATE TABLE IF NOT EXISTS app_preferences (
+                id TEXT PRIMARY KEY DEFAULT 'default',
+                json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS app_secrets (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS llm_credentials (
+                provider TEXT PRIMARY KEY,
+                api_key_encrypted TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                model TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             ",
         )?;
         for (code, label, desc) in dimensions::seed_rows() {
@@ -130,6 +166,7 @@ impl Database {
         }
         let _ = conn.execute("ALTER TABLE reports ADD COLUMN dimension_summary TEXT", []);
         let _ = conn.execute("ALTER TABLE reports ADD COLUMN news_ids TEXT", []);
+        let _ = conn.execute("ALTER TABLE reports ADD COLUMN anomaly_reason TEXT", []);
         Ok(())
     }
 
@@ -155,6 +192,71 @@ impl Database {
             ])?;
         }
         Ok(klines.len())
+    }
+
+    pub fn save_tick(&self, tick: &Tick) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO ticks VALUES (?,?,?,?,?,?,?)",
+            params![
+                tick.symbol,
+                tick.timestamp,
+                tick.last_price,
+                tick.volume,
+                tick.open_interest,
+                tick.bid_price,
+                tick.ask_price,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn purge_old_klines(&self, keep_days: i64) -> AppResult<usize> {
+        let cutoff = (Utc::now() - chrono::Duration::days(keep_days)).to_rfc3339();
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let n = conn.execute("DELETE FROM klines WHERE start_time < ?", params![cutoff])?;
+        Ok(n)
+    }
+
+    pub fn purge_old_ticks(&self, keep_days: i64) -> AppResult<usize> {
+        let cutoff = (Utc::now() - chrono::Duration::days(keep_days)).to_rfc3339();
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let n = conn.execute("DELETE FROM ticks WHERE timestamp < ?", params![cutoff])?;
+        Ok(n)
+    }
+
+    pub fn get_news_by_id(&self, id: &str) -> AppResult<Option<NewsRecord>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, source, category_id, title, summary, url, display_time, content_hash, ingested_at
+             FROM news_items WHERE id=? LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(NewsRecord {
+                id: row.get(0)?,
+                source: row.get(1)?,
+                category_id: row.get(2)?,
+                title: row.get(3)?,
+                summary: row.get(4)?,
+                url: row.get(5)?,
+                display_time: row.get(6)?,
+                content_hash: row.get(7)?,
+                ingested_at: row.get(8)?,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn delete_classifications_for_news(&self, news_ids: &[String]) -> AppResult<usize> {
+        if news_ids.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut count = 0usize;
+        for id in news_ids {
+            count += conn.execute("DELETE FROM news_classifications WHERE news_id=?", params![id])?;
+        }
+        Ok(count)
     }
 
     pub fn get_klines(
@@ -207,7 +309,7 @@ impl Database {
             .transpose()?;
         let news_ids = serde_json::to_string(&report.news_ids)?;
         conn.execute(
-            "INSERT OR REPLACE INTO reports VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO reports (id,symbol,trigger,provider,prompt_version,context_summary,content,created_at,tags,dimension_summary,news_ids,anomaly_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             params![
                 report.id,
                 report.symbol,
@@ -220,6 +322,7 @@ impl Database {
                 tags,
                 dimension_summary,
                 news_ids,
+                report.anomaly_reason,
             ],
         )?;
         Ok(())
@@ -233,7 +336,7 @@ impl Database {
     ) -> AppResult<Vec<AnalysisReport>> {
         let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
         let mut query = String::from(
-            "SELECT id,symbol,trigger,provider,prompt_version,context_summary,content,created_at,tags,dimension_summary,news_ids FROM reports",
+            "SELECT id,symbol,trigger,provider,prompt_version,context_summary,content,created_at,tags,dimension_summary,news_ids,anomaly_reason FROM reports",
         );
         let mut conditions = Vec::new();
         let mut bind: Vec<String> = Vec::new();
@@ -267,7 +370,7 @@ impl Database {
     pub fn get_report(&self, id: &str) -> AppResult<Option<AnalysisReport>> {
         let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
         let mut stmt = conn.prepare(
-            "SELECT id,symbol,trigger,provider,prompt_version,context_summary,content,created_at,tags,dimension_summary,news_ids FROM reports WHERE id=?",
+            "SELECT id,symbol,trigger,provider,prompt_version,context_summary,content,created_at,tags,dimension_summary,news_ids,anomaly_reason FROM reports WHERE id=?",
         )?;
         let mut rows = stmt.query_map(params![id], row_to_report)?;
         Ok(rows.next().transpose()?)
@@ -389,9 +492,19 @@ impl Database {
         let mut count = 0usize;
         for label in labels {
             let n = conn.execute(
-                "INSERT OR IGNORE INTO news_classifications
+                "INSERT INTO news_classifications
                  (news_id, symbol, dimension_code, confidence, method, created_at)
-                 VALUES (?,?,?,?,?,?)",
+                 VALUES (?,?,?,?,?,?)
+                 ON CONFLICT(news_id, symbol, dimension_code) DO UPDATE SET
+                   confidence = CASE
+                     WHEN excluded.confidence > confidence THEN excluded.confidence
+                     ELSE confidence
+                   END,
+                   method = CASE
+                     WHEN excluded.confidence > confidence THEN excluded.method
+                     WHEN excluded.confidence = confidence AND excluded.method = 'llm' THEN excluded.method
+                     ELSE method
+                   END",
                 params![
                     label.news_id,
                     label.symbol.to_uppercase(),
@@ -536,6 +649,45 @@ impl Database {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    pub fn save_calendar_cache(
+        &self,
+        cache_key: &str,
+        events: &[CalendarEvent],
+        error_message: Option<&str>,
+    ) -> AppResult<()> {
+        let json = serde_json::to_string(events).map_err(|e| AppError::Msg(e.to_string()))?;
+        let now = dt_to_iso(Utc::now());
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT INTO calendar_cache (cache_key, events_json, fetched_at, error_message)
+             VALUES (?,?,?,?)
+             ON CONFLICT(cache_key) DO UPDATE SET
+               events_json=excluded.events_json,
+               fetched_at=excluded.fetched_at,
+               error_message=excluded.error_message",
+            params![cache_key, json, now, error_message],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_calendar_cache(&self, cache_key: &str) -> AppResult<Option<Vec<CalendarEvent>>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT events_json FROM calendar_cache WHERE cache_key=? ORDER BY fetched_at DESC LIMIT 1",
+        )?;
+        let json: Option<String> = stmt
+            .query_row(params![cache_key], |row| row.get(0))
+            .ok();
+        match json {
+            Some(raw) => {
+                let events: Vec<CalendarEvent> =
+                    serde_json::from_str(&raw).map_err(|e| AppError::Msg(e.to_string()))?;
+                Ok(Some(events))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub fn get_news_by_ids(&self, ids: &[String]) -> AppResult<Vec<NewsItemView>> {
         if ids.is_empty() {
             return Ok(vec![]);
@@ -619,6 +771,92 @@ impl Database {
         };
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
+
+    pub fn load_user_preferences(&self) -> AppResult<Option<UserPreferences>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare("SELECT json FROM app_preferences WHERE id = 'default'")?;
+        let mut rows = stmt.query([])?;
+        if let Some(row) = rows.next()? {
+            let json: String = row.get(0)?;
+            let prefs: UserPreferences = serde_json::from_str(&json)
+                .map_err(|e| AppError::Msg(format!("invalid preferences json: {e}")))?;
+            Ok(Some(prefs))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn save_user_preferences(&self, prefs: &UserPreferences) -> AppResult<()> {
+        let json = serde_json::to_string(prefs)
+            .map_err(|e| AppError::Msg(format!("serialize preferences: {e}")))?;
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO app_preferences (id, json, updated_at) VALUES ('default', ?1, ?2)",
+            params![json, dt_to_iso(Utc::now())],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_or_create_app_secret(&self, key: &str) -> AppResult<String> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare("SELECT value FROM app_secrets WHERE key = ?1")?;
+        let mut rows = stmt.query(params![key])?;
+        if let Some(row) = rows.next()? {
+            return Ok(row.get(0)?);
+        }
+        let value = format!("{}{}", uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+        conn.execute(
+            "INSERT INTO app_secrets (key, value, updated_at) VALUES (?1, ?2, ?3)",
+            params![key, value, dt_to_iso(Utc::now())],
+        )?;
+        Ok(value)
+    }
+
+    pub fn list_llm_credentials(
+        &self,
+    ) -> AppResult<Vec<(String, String, String, String)>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT provider, api_key_encrypted, base_url, model FROM llm_credentials ORDER BY provider",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+            ))
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn upsert_llm_credential(
+        &self,
+        provider: &str,
+        api_key_encrypted: &str,
+        base_url: &str,
+        model: &str,
+    ) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO llm_credentials (provider, api_key_encrypted, base_url, model, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                provider,
+                api_key_encrypted,
+                base_url,
+                model,
+                dt_to_iso(Utc::now())
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_llm_credential(&self, provider: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute("DELETE FROM llm_credentials WHERE provider = ?1", params![provider])?;
+        Ok(())
+    }
 }
 
 fn row_to_report(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnalysisReport> {
@@ -647,6 +885,7 @@ fn row_to_report(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnalysisReport> {
         tags,
         dimension_summary,
         news_ids,
+        anomaly_reason: row.get(11).ok(),
     })
 }
 

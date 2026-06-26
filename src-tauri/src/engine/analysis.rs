@@ -2,7 +2,10 @@ use chrono::{Duration, Utc};
 
 use crate::adapters::{default_calendar_range_from_today, AkshareClient, JinshiClient};
 use crate::db::Database;
-use crate::engine::{dimensions, indicator, sectors};
+use crate::engine::{calendar_filter, dimensions, indicator, sectors};
+
+/// LLM 分析 prompt 版本，落库于 reports.prompt_version。
+pub const PROMPT_VERSION: &str = "v4";
 
 pub const SYSTEM_PROMPT: &str = "你是一名专业的期货市场分析师，擅长结合技术面与基本面进行走势研判。\
 技术分析默认基于**日 K 线**（1d）周期：趋势、均线、MACD、支撑阻力均优先从日 K 视角解读；\
@@ -27,6 +30,9 @@ pub async fn build_context(
         klines = klines.split_off(klines.len() - 60);
     }
     let summary = indicator::summary(&klines);
+
+    let fundamentals =
+        crate::engine::fundamentals::fetch_fundamentals(akshare, symbol).await;
 
     let main_symbol = sectors::get_product_by_symbol(symbol)
         .map(|p| p.symbol.to_uppercase())
@@ -85,7 +91,9 @@ pub async fn build_context(
             .fetch_calendar_events(cal_start, cal_end, 3, None)
             .await
         {
-            calendar_events = events
+            let filtered =
+                calendar_filter::filter_for_analysis(events, sector_code, &dimension_codes);
+            calendar_events = filtered
                 .into_iter()
                 .map(|e| {
                     serde_json::json!({
@@ -98,6 +106,24 @@ pub async fn build_context(
                         "actual": e.actual,
                         "unit": e.unit,
                         "status": e.status,
+                    })
+                })
+                .collect();
+        }
+    }
+
+    let mut dimension_facts: Vec<serde_json::Value> = Vec::new();
+    if let Some(database) = db {
+        if let Ok(facts) = database.get_dimension_facts(&main_symbol, 15) {
+            dimension_facts = facts
+                .iter()
+                .map(|f| {
+                    serde_json::json!({
+                        "dimension_code": f.dimension_code,
+                        "dimension_label": dimensions::dimension_label(&f.dimension_code),
+                        "fact": f.fact,
+                        "created_at": f.created_at,
+                        "valid_until": f.valid_until,
                     })
                 })
                 .collect();
@@ -136,6 +162,9 @@ pub async fn build_context(
         "news": news_items,
         "news_by_dimension": news_by_dimension,
         "calendar_events": calendar_events,
+        "dimension_facts": dimension_facts,
+        "fundamentals": fundamentals,
+        "prompt_version": PROMPT_VERSION,
     })
 }
 
@@ -175,11 +204,16 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
     let news_by_dim = ctx["news_by_dimension"].as_object().cloned();
     let news = ctx["news"].as_array().cloned().unwrap_or_default();
     let calendar = ctx["calendar_events"].as_array().cloned().unwrap_or_default();
+    let dimension_facts = ctx["dimension_facts"].as_array().cloned().unwrap_or_default();
+    let fundamentals = &ctx["fundamentals"];
 
     let trigger_label = match trigger {
         "daily" => "每日收盘分析",
+        "scheduled" => "定时全面分析",
         "realtime" => "盘中实时分析",
         "anomaly" => "异动触发分析",
+        "tomorrow" => "明日走势展望（下一交易日）",
+        "short_term" => "短期走势研判（未来3-5个交易日）",
         _ => "用户手动请求",
     };
     let change_pct = ind["change_pct"]
@@ -189,6 +223,8 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
 
     let dimension_news_block = render_dimension_news_block(&dimension_list, news_by_dim.as_ref(), &news);
     let calendar_block = render_calendar_block(&calendar);
+    let facts_block = render_dimension_facts_block(&dimension_facts);
+    let fundamentals_block = render_fundamentals_block(fundamentals);
     let dimension_output_list = dimension_list
         .iter()
         .map(|d| {
@@ -200,6 +236,18 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n");
+
+    let horizon_block = match trigger {
+        "tomorrow" => "\n\n## 重点输出（明日展望）\n\
+            请在 Markdown 正文中**单独增加**「明日走势展望」小节，基于日 K 技术面、\
+            财经日历中与下一交易日相关的 ★3+ 事件、以及分维度资讯，给出下一交易日的：\
+            方向倾向（偏多/偏空/震荡）、关键价位、主要风险与催化。\n",
+        "short_term" => "\n\n## 重点输出（短期研判）\n\
+            请在 Markdown 正文中**单独增加**「短期走势研判（3-5个交易日）」小节，\
+            结合日 K 均线/MACD 趋势、量能、宏观日程与产业维度，给出未来 3-5 个交易日的\
+            路径推演、区间目标与止损/止盈参考（非具体操作建议）。\n",
+        _ => "",
+    };
 
     format!(
         "请对国内期货品种【{product_name}主力（{main_symbol}）】进行{trigger_label}。\n\
@@ -218,7 +266,11 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
         - 近10日收盘：{closes}\n\n\
         ## 分维度资讯（已分类入库，供基本面参考）\n\
         {dimension_news_block}\n\n\
-        ## 宏观数据发布日程（金十财经日历，未来两周高重要性）\n\
+        ## 历史分析事实（dimension_facts，供延续性参考）\n\
+        {facts_block}\n\n\
+        ## 基本面快照（持仓/仓单/基差）\n\
+        {fundamentals_block}\n\n\
+        ## 宏观数据发布日程（金十财经日历，未来两周 · 已按板块筛选）\n\
         {calendar_block}\n\n\
         ## 输出要求\n\
         1. **首先**输出一个 JSON 代码块（```json），格式如下（键为维度 code，值为要点字符串数组）：\n\
@@ -232,7 +284,7 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
         2. 关键支撑位与阻力位\n\
         3. 资金面/量能信号\n\
         4. 综合风险与短期关注点\n\
-        5. 免责声明：本分析仅供参考，不构成投资建议。",
+        5. 免责声明：本分析仅供参考，不构成投资建议。{horizon_block}",
         bars = ctx["bars_count"].as_u64().unwrap_or(0),
         last = ind["last"].as_f64().map(|v| v.to_string()).unwrap_or_else(|| "N/A".into()),
         ma5 = ind["ma5"].as_f64().map(|v| v.to_string()).unwrap_or_else(|| "N/A".into()),
@@ -246,6 +298,43 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
         min_l = ind["min_low"].as_f64().map(|v| v.to_string()).unwrap_or_else(|| "N/A".into()),
         closes = ctx["recent_closes"].clone(),
     )
+}
+
+fn render_fundamentals_block(fundamentals: &serde_json::Value) -> String {
+    if fundamentals.is_null() {
+        return "（暂无基本面数据）".into();
+    }
+    let oi = fundamentals["open_interest"]
+        .as_i64()
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "—".into());
+    let note = fundamentals["note"].as_str().unwrap_or("");
+    format!(
+        "- 持仓量（OI）：{oi}\n- 仓单：{}\n- 基差：{}\n- 来源：{}\n- 说明：{note}",
+        fundamentals["warehouse"].as_str().unwrap_or("—"),
+        fundamentals["basis"].as_str().unwrap_or("—"),
+        fundamentals["source"].as_str().unwrap_or("—"),
+    )
+}
+
+fn render_dimension_facts_block(facts: &[serde_json::Value]) -> String {
+    if facts.is_empty() {
+        return "（暂无历史分析事实）".into();
+    }
+    facts
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            format!(
+                "  {}. [{}] {} — {}",
+                i + 1,
+                f["dimension_label"].as_str().unwrap_or(""),
+                f["created_at"].as_str().unwrap_or(""),
+                f["fact"].as_str().unwrap_or(""),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn render_calendar_block(events: &[serde_json::Value]) -> String {

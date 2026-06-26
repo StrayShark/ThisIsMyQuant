@@ -67,7 +67,7 @@ export function SymbolsPage() {
                       type="button"
                       onClick={() => {
                         setCurrentSymbol(product.symbol);
-                        navigate("/");
+                        navigate(`/symbols/${product.symbol}`);
                       }}
                       className={`rounded-md border px-3 py-2 text-left transition-colors ${
                         active

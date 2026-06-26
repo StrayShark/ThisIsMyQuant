@@ -1,16 +1,20 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PanelSkeleton } from "@/components/ui/panel-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { NativeSelect } from "@/components/ui/native-select";
 import { useAppStore } from "@/app/store";
 import { api } from "@/api/client";
 import { dimensionLabel } from "@/data/dimensions";
+import type { NewsRecord, ScheduleStatus, UserPreferences } from "@/types";
 
 function SettingRow({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -18,6 +22,575 @@ function SettingRow({ label, value }: { label: string; value: ReactNode }) {
       <span className="text-sm text-foreground">{label}</span>
       <span className="text-sm text-muted-foreground">{value}</span>
     </div>
+  );
+}
+
+function scheduleStatusLabel(
+  status: ScheduleStatus | undefined,
+  configEnabled: boolean,
+  watchlistEmpty: boolean
+): { text: string; variant: "default" | "secondary" | "outline" | "up" | "down" } {
+  if (watchlistEmpty) {
+    return { text: "未配置关注列表", variant: "down" };
+  }
+  if (status?.cycle_in_progress) {
+    return { text: "执行中", variant: "default" };
+  }
+  if (!configEnabled) {
+    return { text: "已关闭", variant: "secondary" };
+  }
+  if (status?.enabled) {
+    return { text: "运行中", variant: "default" };
+  }
+  return { text: "待命", variant: "outline" };
+}
+
+function nextCycleHint(
+  status: ScheduleStatus | undefined,
+  configEnabled: boolean,
+  watchlistEmpty: boolean
+): string {
+  if (watchlistEmpty) return "请先配置关注列表";
+  if (!configEnabled) return "定时任务已关闭";
+  if (status?.cycle_in_progress) return "当前周期执行中";
+  if (status?.last_cycle_at) {
+    const next = new Date(status.last_cycle_at);
+    next.setHours(next.getHours() + (status.interval_hours || 6));
+    if (next.getTime() > Date.now()) {
+      return `约 ${next.toLocaleString("zh-CN")}`;
+    }
+    return "上一周期已完成，等待下一窗口";
+  }
+  return "应用启动后约 90 秒首次执行";
+}
+
+function PrefCheckbox({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between border-b border-border py-3 last:border-0">
+      <span className="text-sm text-foreground">{label}</span>
+      <input
+        type="checkbox"
+        className="h-4 w-4 accent-primary"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+    </label>
+  );
+}
+
+function PrefNumber({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border py-3 last:border-0">
+      <span className="text-sm text-foreground">{label}</span>
+      <Input
+        type="number"
+        className="h-8 w-24 font-mono text-sm"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </div>
+  );
+}
+
+function AppPreferencesEditor() {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState<UserPreferences | null>(null);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const { data: prefs, isLoading } = useQuery({
+    queryKey: ["user-preferences"],
+    queryFn: () => api.getUserPreferences(),
+  });
+
+  useEffect(() => {
+    if (prefs) {
+      setDraft(prefs);
+    }
+  }, [prefs]);
+
+  const patch = (partial: Partial<UserPreferences>) => {
+    setDraft((d) => (d ? { ...d, ...partial } : d));
+  };
+
+  const handleSave = async () => {
+    if (!draft) return;
+    setSaving(true);
+    setSaveMsg("");
+    try {
+      const saved = await api.saveUserPreferences(draft);
+      setDraft(saved);
+      queryClient.invalidateQueries({ queryKey: ["app-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["user-preferences"] });
+      queryClient.invalidateQueries({ queryKey: ["runtime-status"] });
+      queryClient.invalidateQueries({ queryKey: ["schedule-status"] });
+      setSaveMsg("配置已保存并生效");
+    } catch (e) {
+      setSaveMsg(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (isLoading || !draft) {
+    return <Skeleton className="h-64 rounded-lg md:col-span-2 xl:col-span-3" />;
+  }
+
+  return (
+    <Card className="md:col-span-2 xl:col-span-3">
+      <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+        <div>
+          <CardTitle className="text-sm font-semibold">运营配置</CardTitle>
+          <p className="mt-1 text-xs text-muted-foreground">
+            数据源、异动、数据保留等。定时任务请在上方单独配置。
+          </p>
+        </div>
+        <Button size="sm" disabled={saving} onClick={handleSave}>
+          {saving ? "保存中…" : "保存配置"}
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-x-8 md:grid-cols-2">
+          <div>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">数据源</p>
+            <PrefCheckbox
+              label="AKShare K 线"
+              checked={draft.akshare_enabled}
+              onChange={(v) => patch({ akshare_enabled: v })}
+            />
+            <PrefCheckbox
+              label="实时行情轮询"
+              checked={draft.akshare_realtime_enabled}
+              onChange={(v) => patch({ akshare_realtime_enabled: v })}
+            />
+            <PrefNumber
+              label="行情轮询间隔（秒）"
+              value={draft.realtime_poll_interval}
+              min={1}
+              step={0.5}
+              onChange={(v) => patch({ realtime_poll_interval: v })}
+            />
+            <PrefCheckbox
+              label="金十资讯"
+              checked={draft.jinshi_enabled}
+              onChange={(v) => patch({ jinshi_enabled: v })}
+            />
+            <PrefNumber
+              label="资讯轮询间隔（秒）"
+              value={draft.jinshi_poll_interval}
+              min={30}
+              onChange={(v) => patch({ jinshi_poll_interval: v })}
+            />
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">分析与异动</p>
+            <div className="flex items-center justify-between gap-3 border-b border-border py-3">
+              <span className="text-sm text-foreground">默认 LLM</span>
+              <Input
+                value={draft.default_llm_provider}
+                onChange={(e) => patch({ default_llm_provider: e.target.value })}
+                className="h-8 w-28 font-mono text-sm"
+              />
+            </div>
+            <PrefCheckbox
+              label="资讯 LLM 分类"
+              checked={draft.news_classify_enabled}
+              onChange={(v) => patch({ news_classify_enabled: v })}
+            />
+            <PrefNumber
+              label="分类 batch 大小"
+              value={draft.news_classify_batch}
+              min={1}
+              max={50}
+              onChange={(v) => patch({ news_classify_batch: v })}
+            />
+            <PrefCheckbox
+              label="异动检测"
+              checked={draft.anomaly_enabled}
+              onChange={(v) => patch({ anomaly_enabled: v })}
+            />
+            <PrefNumber
+              label="异动阈值（%）"
+              value={draft.anomaly_price_pct}
+              min={0.1}
+              step={0.1}
+              onChange={(v) => patch({ anomaly_price_pct: v })}
+            />
+            <PrefNumber
+              label="异动窗口（秒）"
+              value={draft.anomaly_window_secs}
+              min={60}
+              onChange={(v) => patch({ anomaly_window_secs: v })}
+            />
+            <PrefNumber
+              label="异动冷却（秒）"
+              value={draft.anomaly_cooldown_secs}
+              min={60}
+              onChange={(v) => patch({ anomaly_cooldown_secs: v })}
+            />
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-medium text-muted-foreground">数据维护</p>
+            <PrefNumber
+              label="日 K 回填天数"
+              value={draft.backfill_days_daily}
+              min={1}
+              onChange={(v) => patch({ backfill_days_daily: v })}
+            />
+            <PrefNumber
+              label="1 分钟 K 回填天数"
+              value={draft.backfill_days_minute}
+              min={1}
+              onChange={(v) => patch({ backfill_days_minute: v })}
+            />
+            <PrefCheckbox
+              label="Tick 入库"
+              checked={draft.ticks_enabled}
+              onChange={(v) => patch({ ticks_enabled: v })}
+            />
+            <PrefNumber
+              label="K 线保留天数"
+              value={draft.retention_days_klines}
+              min={7}
+              onChange={(v) => patch({ retention_days_klines: v })}
+            />
+            <PrefNumber
+              label="Tick 保留天数"
+              value={draft.retention_days_ticks}
+              min={1}
+              onChange={(v) => patch({ retention_days_ticks: v })}
+            />
+            <PrefCheckbox
+              label="日历事件提醒"
+              checked={draft.calendar_reminder_enabled}
+              onChange={(v) => patch({ calendar_reminder_enabled: v })}
+            />
+            <PrefNumber
+              label="提醒提前（分钟）"
+              value={draft.calendar_reminder_mins}
+              min={1}
+              onChange={(v) => patch({ calendar_reminder_mins: v })}
+            />
+          </div>
+        </div>
+        {saveMsg && <p className="mt-3 text-xs text-muted-foreground">{saveMsg}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ScheduleTaskPanel() {
+  const queryClient = useQueryClient();
+  const [watchlistText, setWatchlistText] = useState("");
+  const [scheduleEnabled, setScheduleEnabled] = useState(true);
+  const [intervalHours, setIntervalHours] = useState(6);
+  const [analysisTrigger, setAnalysisTrigger] = useState("scheduled");
+  const [dailyBriefingEnabled, setDailyBriefingEnabled] = useState(true);
+  const [dailyBriefingHour, setDailyBriefingHour] = useState(17);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [actionMsg, setActionMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [acting, setActing] = useState(false);
+
+  const { data: prefs, isLoading: prefsLoading } = useQuery({
+    queryKey: ["user-preferences"],
+    queryFn: () => api.getUserPreferences(),
+  });
+
+  const { data: status, refetch: refetchStatus } = useQuery({
+    queryKey: ["schedule-status"],
+    queryFn: () => api.getScheduleStatus(),
+    refetchInterval: 10_000,
+  });
+
+  useEffect(() => {
+    if (prefs) {
+      setWatchlistText(prefs.watchlist.join(", "));
+      setScheduleEnabled(prefs.schedule_enabled);
+      setIntervalHours(prefs.schedule_interval_hours);
+      setAnalysisTrigger(prefs.schedule_analysis_trigger ?? "scheduled");
+      setDailyBriefingEnabled(prefs.daily_briefing_enabled ?? true);
+      setDailyBriefingHour(prefs.daily_briefing_hour ?? 17);
+    }
+  }, [prefs]);
+
+  const watchlist = watchlistText
+    .split(/[,，\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const watchlistEmpty = watchlist.length === 0;
+  const statusBadge = scheduleStatusLabel(status, scheduleEnabled, watchlistEmpty);
+
+  const handleSave = async () => {
+    if (!prefs) return;
+    setSaving(true);
+    setSaveMsg("");
+    try {
+      const saved = await api.saveUserPreferences({
+        ...prefs,
+        watchlist,
+        schedule_enabled: scheduleEnabled,
+        schedule_interval_hours: intervalHours,
+        schedule_analysis_trigger: analysisTrigger,
+        daily_briefing_enabled: dailyBriefingEnabled,
+        daily_briefing_hour: dailyBriefingHour,
+      });
+      setWatchlistText(saved.watchlist.join(", "));
+      setScheduleEnabled(saved.schedule_enabled);
+      setIntervalHours(saved.schedule_interval_hours);
+      setAnalysisTrigger(saved.schedule_analysis_trigger);
+      setDailyBriefingEnabled(saved.daily_briefing_enabled);
+      setDailyBriefingHour(saved.daily_briefing_hour);
+      queryClient.invalidateQueries({ queryKey: ["app-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["user-preferences"] });
+      queryClient.invalidateQueries({ queryKey: ["runtime-status"] });
+      queryClient.invalidateQueries({ queryKey: ["schedule-status"] });
+      setSaveMsg("定时任务配置已保存并生效");
+    } catch (e) {
+      setSaveMsg(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runAction = async (fn: () => Promise<void>) => {
+    setActing(true);
+    setActionMsg("");
+    try {
+      await fn();
+      await refetchStatus();
+      queryClient.invalidateQueries({ queryKey: ["runtime-status"] });
+    } catch (e) {
+      setActionMsg(e instanceof Error ? e.message : "操作失败");
+    } finally {
+      setActing(false);
+    }
+  };
+
+  if (prefsLoading) {
+    return <Skeleton className="h-72 rounded-lg md:col-span-2 xl:col-span-3" />;
+  }
+
+  return (
+    <Card className="md:col-span-2 xl:col-span-3">
+      <CardHeader className="flex-row items-start justify-between space-y-0 pb-2">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle className="text-sm font-semibold">定时任务</CardTitle>
+            <Badge variant={statusBadge.variant}>{statusBadge.text}</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            周期任务：日历 ★3+ → 资讯 → K 线刷新 → watchlist LLM 分析（触发类型可配）。每日简报在固定时刻额外跑「明日展望」。
+          </p>
+        </div>
+        <Button size="sm" disabled={saving} onClick={handleSave}>
+          {saving ? "保存中…" : "保存定时配置"}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-3">
+            <p className="text-xs font-medium text-muted-foreground">配置</p>
+            <div className="space-y-1">
+              <span className="text-sm text-foreground">分析关注列表（逗号分隔）</span>
+              <Input
+                value={watchlistText}
+                onChange={(e) => setWatchlistText(e.target.value)}
+                placeholder="rb2510, au2512, if2512"
+                className="font-mono text-sm"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                共 {watchlist.length} 个品种；为空时定时任务不会执行
+              </p>
+            </div>
+            <PrefCheckbox
+              label="启用定时任务"
+              checked={scheduleEnabled}
+              onChange={setScheduleEnabled}
+            />
+            <PrefNumber
+              label="执行间隔（小时）"
+              value={intervalHours}
+              min={1}
+              max={168}
+              onChange={setIntervalHours}
+            />
+            <div className="flex items-center justify-between gap-3 border-b border-border py-3 last:border-0">
+              <span className="text-sm text-foreground">周期分析类型</span>
+              <NativeSelect
+                className="h-8 w-36 text-xs"
+                value={analysisTrigger}
+                onChange={(e) => setAnalysisTrigger(e.target.value)}
+              >
+                <option value="scheduled">定时全面</option>
+                <option value="tomorrow">明日展望</option>
+                <option value="short_term">短期研判</option>
+                <option value="manual">手动风格</option>
+              </NativeSelect>
+            </div>
+            <PrefCheckbox
+              label="每日简报（明日展望）"
+              checked={dailyBriefingEnabled}
+              onChange={setDailyBriefingEnabled}
+            />
+            <PrefNumber
+              label="简报时刻（小时 0–23）"
+              value={dailyBriefingHour}
+              min={0}
+              max={23}
+              onChange={setDailyBriefingHour}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-medium text-muted-foreground">运行状态</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => refetchStatus()}
+              >
+                刷新
+              </Button>
+            </div>
+            <SettingRow
+              label="有效周期"
+              value={
+                <span className="font-mono text-xs">
+                  每 {status?.interval_hours ?? intervalHours} 小时
+                </span>
+              }
+            />
+            <SettingRow
+              label="预计下次"
+              value={
+                <span className="font-mono text-xs">
+                  {nextCycleHint(status, scheduleEnabled, watchlistEmpty)}
+                </span>
+              }
+            />
+            <SettingRow
+              label="上次完成"
+              value={
+                status?.last_cycle_at ? (
+                  <span className="font-mono text-xs">
+                    {new Date(status.last_cycle_at).toLocaleString("zh-CN")}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">尚未执行</span>
+                )
+              }
+            />
+            <SettingRow
+              label="上次分析"
+              value={
+                status?.last_analysis_total ? (
+                  <span className="font-mono text-xs">
+                    {status.last_analysis_completed}/{status.last_analysis_total} 品种
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )
+              }
+            />
+            {status?.last_data_fetch && (
+              <SettingRow
+                label="上次数据拉取"
+                value={
+                  <span className="text-xs">
+                    日历 {status.last_data_fetch.calendar_events} · 资讯{" "}
+                    {status.last_data_fetch.news_items} · K线{" "}
+                    {status.last_data_fetch.klines_symbols} 品种
+                  </span>
+                }
+              />
+            )}
+            {status?.last_error && (
+              <p className="mt-2 text-xs text-down">{status.last_error}</p>
+            )}
+            {status?.cycle_in_progress && (
+              <p className="text-xs text-primary">定时周期执行中，请稍候…</p>
+            )}
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-4">
+          <p className="mb-2 text-xs font-medium text-muted-foreground">手动触发</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={watchlistEmpty || acting || !!status?.cycle_in_progress}
+              onClick={() =>
+                runAction(async () => {
+                  const r = await api.triggerDataFetch();
+                  setActionMsg(
+                    `数据拉取完成：日历 ${r.calendar_events} 条，资讯 ${r.news_items} 条，K线 ${r.klines_symbols} 品种`
+                  );
+                })
+              }
+            >
+              立即拉取数据
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={watchlistEmpty || acting || !!status?.cycle_in_progress}
+              onClick={() =>
+                runAction(async () => {
+                  const r = await api.triggerComprehensiveAnalysis();
+                  setActionMsg(`全面分析已启动（${r.total} 个品种，含数据拉取）`);
+                })
+              }
+            >
+              全面分析 watchlist
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={watchlistEmpty || acting || !!status?.cycle_in_progress}
+              onClick={() =>
+                runAction(async () => {
+                  await api.triggerBatchAnalysis({ symbols: watchlist, trigger: "manual" });
+                  setActionMsg("仅分析任务已启动（不含数据拉取）");
+                })
+              }
+            >
+              仅分析（不拉数据）
+            </Button>
+          </div>
+          {(saveMsg || actionMsg) && (
+            <p className="mt-2 text-xs text-muted-foreground">{saveMsg || actionMsg}</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -52,7 +625,9 @@ function DimensionFactsDebug() {
         </div>
         <ScrollArea className="h-[240px] rounded-md border border-border">
           {isLoading ? (
-            <p className="p-3 text-sm text-muted-foreground">加载中…</p>
+            <div className="p-3">
+              <PanelSkeleton rows={5} />
+            </div>
           ) : facts && facts.length > 0 ? (
             <div className="divide-y divide-border">
               {facts.map((f) => (
@@ -84,30 +659,155 @@ function DimensionFactsDebug() {
   );
 }
 
-export function SettingsPage() {
-  const { akshareOnline, jinshiOnline, realtimeOnline, realtimeSource, statusMessage } =
-    useAppStore();
+function UnclassifiedNewsPanel() {
+  const queryClient = useQueryClient();
+  const { data: items, isLoading, refetch } = useQuery({
+    queryKey: ["unclassified-news"],
+    queryFn: () => api.listUnclassifiedNews(40),
+    refetchInterval: 120_000,
+  });
 
-  const { data: settings, isLoading, refetch } = useQuery({
+  return (
+    <Card className="md:col-span-2 xl:col-span-3">
+      <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-semibold">未分类资讯队列</CardTitle>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => refetch()}>
+            刷新
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            disabled={!items?.length}
+            onClick={async () => {
+              if (!items?.length) return;
+              await api.reclassifyNews({ news_ids: items.map((n) => n.id) });
+              refetch();
+              queryClient.invalidateQueries({ queryKey: ["unclassified-news"] });
+            }}
+          >
+            LLM 重分类
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="mb-2 text-xs text-muted-foreground">
+          规则与 LLM 均未命中的资讯，共 {items?.length ?? 0} 条（最多 40 条）
+        </p>
+        <ScrollArea className="h-[220px] rounded-md border border-border">
+          {isLoading ? (
+            <div className="p-3">
+              <PanelSkeleton rows={4} />
+            </div>
+          ) : items && items.length > 0 ? (
+            <div className="divide-y divide-border">
+              {items.map((n: NewsRecord) => (
+                <div key={n.id} className="space-y-0.5 px-3 py-2.5">
+                  <p className="text-sm font-medium text-foreground">{n.title}</p>
+                  <p className="line-clamp-2 text-xs text-muted-foreground">{n.summary}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {new Date(n.display_time).toLocaleString("zh-CN")} · {n.source}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="p-3 text-sm text-muted-foreground">暂无未分类资讯</p>
+          )}
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RuntimeStatusPanel() {
+  const { data: runtime, refetch } = useQuery({
+    queryKey: ["runtime-status"],
+    queryFn: () => api.getRuntimeStatus(),
+    refetchInterval: 15_000,
+  });
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-semibold">运行时 · 行情与回填</CardTitle>
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => refetch()}>
+          刷新
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <SettingRow
+          label="行情源"
+          value={
+            <span className="font-mono text-xs">{runtime?.feed_source ?? "—"}</span>
+          }
+        />
+        <SettingRow
+          label="订阅品种"
+          value={
+            <span className="font-mono text-xs">
+              {runtime?.poll?.symbol_count ?? 0} 个 · {runtime?.poll?.interval ?? "—"}s
+            </span>
+          }
+        />
+        <SettingRow
+          label="历史回填"
+          value={
+            runtime?.backfill?.running ? (
+              <span className="text-xs">
+                {runtime.backfill.completed}/{runtime.backfill.total}
+                {runtime.backfill.current_symbol && ` · ${runtime.backfill.current_symbol}`}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                完成 {runtime?.backfill?.completed ?? 0}/{runtime?.backfill?.total ?? 0}
+              </span>
+            )
+          }
+        />
+        {runtime?.backfill?.last_error && (
+          <p className="mt-2 text-xs text-down">{runtime.backfill.last_error}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function SettingsPage() {
+  const queryClient = useQueryClient();
+  const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
+  const [exportMsg, setExportMsg] = useState("");
+  const {
+    akshareOnline,
+    jinshiOnline,
+    jinshiCalendarReady,
+    jinshiCalendarFetchedAt,
+    jinshiCalendarEventCount,
+    realtimeOnline,
+    realtimeSource,
+    statusMessage,
+  } = useAppStore();
+
+  const { data: settings, isLoading } = useQuery({
     queryKey: ["app-settings"],
     queryFn: () => api.getSettings(),
   });
-
-  const cronParts = settings?.daily_analysis_cron.split(" ") ?? ["0", "17"];
-  const dailyTime = `${cronParts[1] ?? "17"}:${(cronParts[0] ?? "0").padStart(2, "0")}`;
 
   return (
     <div className="page-scroll">
       <div className="page-inner">
         <PageHeader
           title="设置"
-          description="读取 Rust 核心与 .env 配置。修改 .env 后需重启应用生效。"
+          description="定时任务与运营配置可在下方编辑并持久化；大模型 API Key 在首次启动或设置页配置，金十等密钥仍可通过 .env 热重载。"
         />
 
         {isLoading ? (
           <Skeleton className="h-48 rounded-lg" />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <ScheduleTaskPanel />
+            <AppPreferencesEditor />
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold">数据源</CardTitle>
@@ -142,6 +842,30 @@ export function SettingsPage() {
                       <span className="text-up">已连接</span>
                     ) : (
                       <span className="text-down">离线</span>
+                    )
+                  }
+                />
+                <SettingRow
+                  label="金十财经日历"
+                  value={
+                    jinshiCalendarReady ? (
+                      <span className="text-up">
+                        可用 · {jinshiCalendarEventCount} 条缓存
+                      </span>
+                    ) : (
+                      <span className="text-down">未拉取</span>
+                    )
+                  }
+                />
+                <SettingRow
+                  label="日历上次更新"
+                  value={
+                    jinshiCalendarFetchedAt ? (
+                      <span className="font-mono text-xs">
+                        {new Date(jinshiCalendarFetchedAt).toLocaleString("zh-CN")}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
                     )
                   }
                 />
@@ -193,32 +917,93 @@ export function SettingsPage() {
                     </span>
                   }
                 />
+                {settings?.llm_keys_masked?.map(([name, masked]) => (
+                  <SettingRow key={name} label={`Key · ${name}`} value={<span className="font-mono text-xs">{masked}</span>} />
+                ))}
+                {settings?.ollama_configured && (
+                  <SettingRow
+                    label="Ollama"
+                    value={
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={async () => {
+                          try {
+                            setOllamaOk(await api.probeOllama());
+                          } catch {
+                            setOllamaOk(false);
+                          }
+                        }}
+                      >
+                        {ollamaOk === null ? "检测连通" : ollamaOk ? "在线" : "离线"}
+                      </Button>
+                    }
+                  />
+                )}
+                {settings?.llm_last_errors &&
+                  Object.entries(settings.llm_last_errors).map(([name, err]) => (
+                    <p key={name} className="text-xs text-down">
+                      {name}: {err.slice(0, 100)}
+                    </p>
+                  ))}
+                <div className="pt-3">
+                  <Button variant="outline" size="sm" className="h-8 w-full text-xs" asChild>
+                    <Link to="/setup">配置 LLM API Key</Link>
+                  </Button>
+                </div>
+                <SettingRow
+                  label="凭据加密"
+                  value={
+                    settings?.encryption_configured ? (
+                      <span className="text-up">ENCRYPTION_KEY 已配置</span>
+                    ) : (
+                      <span className="text-muted-foreground">未配置</span>
+                    )
+                  }
+                />
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">分析调度</CardTitle>
+                <CardTitle className="text-sm font-semibold">行情与异动</CardTitle>
               </CardHeader>
               <CardContent>
                 <SettingRow
-                  label="每日报告"
+                  label="行情源"
                   value={
-                    <span className="font-mono">
-                      {dailyTime}
-                      {settings?.scheduler_daily_running ? " · 运行中" : ""}
-                    </span>
+                    <span className="font-mono text-xs">{settings?.market_feed ?? "akshare_poll"}</span>
                   }
                 />
                 <SettingRow
-                  label="实时间隔"
+                  label="异动检测"
                   value={
-                    <span className="font-mono">
-                      {settings?.realtime_analysis_interval ?? 300}s
-                      {settings?.scheduler_realtime_running ? " · 运行中" : ""}
+                    settings?.anomaly_enabled ? (
+                      <span className="font-mono text-xs">
+                        开启 · {settings.anomaly_price_pct}% / {settings.anomaly_window_secs}s
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">关闭</span>
+                    )
+                  }
+                />
+                <SettingRow
+                  label="回填范围"
+                  value={
+                    <span className="font-mono text-xs">
+                      日K {settings?.backfill_days_daily ?? 120}d · 1m {settings?.backfill_days_minute ?? 5}d
                     </span>
                   }
                 />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">存储</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <SettingRow
                   label="数据库"
                   value={
@@ -227,16 +1012,62 @@ export function SettingsPage() {
                     </span>
                   }
                 />
+                <SettingRow
+                  label="后端"
+                  value={
+                    <span className="font-mono text-xs">{settings?.database_backend ?? "sqlite"}</span>
+                  }
+                />
               </CardContent>
             </Card>
 
+            <RuntimeStatusPanel />
+            <UnclassifiedNewsPanel />
             <DimensionFactsDebug />
           </div>
         )}
 
-        <Button variant="outline" className="mt-8" onClick={() => refetch()}>
-          刷新配置
-        </Button>
+        <div className="mt-8 flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const s = await api.reloadConfig();
+              queryClient.setQueryData(["app-settings"], s);
+            }}
+          >
+            重载 .env（金十等）
+          </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const sym = settings?.watchlist[0] ?? "rb0";
+              const csv = await api.exportKlinesCsv({ symbol: sym, interval: "1d", limit: 500 });
+              const blob = new Blob([csv], { type: "text/csv" });
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = `${sym}-1d.csv`;
+              a.click();
+              setExportMsg(`已导出 ${sym} 日K`);
+            }}
+          >
+            导出 K 线 CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const csv = await api.exportReportsCsv({ limit: 100 });
+              const blob = new Blob([csv], { type: "text/csv" });
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = "reports.csv";
+              a.click();
+              setExportMsg("已导出报告 CSV");
+            }}
+          >
+            导出报告 CSV
+          </Button>
+        </div>
+        {exportMsg && <p className="mt-2 text-xs text-muted-foreground">{exportMsg}</p>}
       </div>
     </div>
   );

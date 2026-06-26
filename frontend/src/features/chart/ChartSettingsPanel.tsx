@@ -2,12 +2,15 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ChartUserConfig, CrosshairModeSetting, PriceScaleModeSetting } from "./chart-config";
+import type { IndicatorSettings } from "./indicators/types";
 
 interface ChartSettingsPanelProps {
   config: ChartUserConfig;
   onChange: (patch: Partial<ChartUserConfig>) => void;
   onReset: () => void;
   onClose: () => void;
+  indicatorSettings: IndicatorSettings;
+  onIndicatorSettingsChange: (patch: Partial<IndicatorSettings>) => void;
 }
 
 function Field({
@@ -52,6 +55,8 @@ export function ChartSettingsPanel({
   onChange,
   onReset,
   onClose,
+  indicatorSettings,
+  onIndicatorSettingsChange,
 }: ChartSettingsPanelProps) {
   return (
     <div className="border-b border-border bg-muted/20 px-3 py-3">
@@ -213,6 +218,49 @@ export function ChartSettingsPanel({
             checked={config.kineticScroll}
             onChange={(v) => onChange({ kineticScroll: v })}
           />
+        </section>
+
+        <section className="space-y-2">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            指标参数
+          </p>
+          <Field label="BOLL 周期">
+            <Input
+              type="number"
+              min={5}
+              max={120}
+              value={indicatorSettings.bollPeriod}
+              onChange={(e) =>
+                onIndicatorSettingsChange({ bollPeriod: Number(e.target.value) || 20 })
+              }
+              className="h-7 font-mono text-xs"
+            />
+          </Field>
+          <Field label="BOLL 倍数">
+            <Input
+              type="number"
+              min={0.5}
+              max={5}
+              step={0.1}
+              value={indicatorSettings.bollMult}
+              onChange={(e) =>
+                onIndicatorSettingsChange({ bollMult: Number(e.target.value) || 2 })
+              }
+              className="h-7 font-mono text-xs"
+            />
+          </Field>
+          <Field label="KDJ 周期">
+            <Input
+              type="number"
+              min={3}
+              max={30}
+              value={indicatorSettings.kdjPeriod}
+              onChange={(e) =>
+                onIndicatorSettingsChange({ kdjPeriod: Number(e.target.value) || 9 })
+              }
+              className="h-7 font-mono text-xs"
+            />
+          </Field>
         </section>
       </div>
     </div>

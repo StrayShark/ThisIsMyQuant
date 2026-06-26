@@ -39,8 +39,11 @@ import {
 } from "./indicators/apply-indicators";
 import { IndicatorToolbar } from "./indicators/IndicatorToolbar";
 import {
+  loadIndicatorSettings,
   loadIndicatorToggles,
+  saveIndicatorSettings,
   saveIndicatorToggles,
+  type IndicatorSettings,
   type IndicatorToggles,
 } from "./indicators/types";
 
@@ -104,7 +107,11 @@ export function ChartPanel() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [legend, setLegend] = useState<OhlcLegend | null>(null);
   const [indicators, setIndicators] = useState<IndicatorToggles>(() => loadIndicatorToggles());
+  const [indicatorSettings, setIndicatorSettings] = useState<IndicatorSettings>(() =>
+    loadIndicatorSettings()
+  );
   const indicatorsRef = useRef(indicators);
+  const indicatorSettingsRef = useRef(indicatorSettings);
 
   const themeDefaults = useMemo(() => defaultChartConfigFromTheme(getChartTheme()), []);
   const [config, setConfig] = useState<ChartUserConfig>(() =>
@@ -128,6 +135,15 @@ export function ChartPanel() {
     saveChartConfig(next);
   }, []);
 
+  const patchIndicatorSettings = useCallback((patch: Partial<IndicatorSettings>) => {
+    setIndicatorSettings((prev) => {
+      const next = { ...prev, ...patch };
+      saveIndicatorSettings(next);
+      indicatorSettingsRef.current = next;
+      return next;
+    });
+  }, []);
+
   const toggleIndicator = useCallback((id: keyof IndicatorToggles) => {
     setIndicators((prev) => {
       const next = { ...prev, [id]: !prev[id] };
@@ -146,7 +162,8 @@ export function ChartPanel() {
       bundle,
       klinesRef.current,
       indicatorsRef.current,
-      configRef.current ?? config
+      configRef.current ?? config,
+      indicatorSettingsRef.current
     );
   }, [config]);
 
@@ -284,6 +301,11 @@ export function ChartPanel() {
   }, [indicators, refreshIndicators]);
 
   useEffect(() => {
+    indicatorSettingsRef.current = indicatorSettings;
+    refreshIndicators();
+  }, [indicatorSettings, refreshIndicators]);
+
+  useEffect(() => {
     const off = wsClient.on((msg: WsMessage) => {
       if (msg.type !== "kline") return;
       if (
@@ -367,6 +389,8 @@ export function ChartPanel() {
           onChange={patchConfig}
           onReset={resetConfig}
           onClose={() => setSettingsOpen(false)}
+          indicatorSettings={indicatorSettings}
+          onIndicatorSettingsChange={patchIndicatorSettings}
         />
       )}
 

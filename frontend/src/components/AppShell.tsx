@@ -1,27 +1,34 @@
 /** Cursor 风格极简侧栏 + 顶栏布局。 */
-import { NavLink } from "react-router-dom";
-import { BarChart3, FileText, Layers, Settings } from "lucide-react";
+import { NavLink, useLocation } from "react-router-dom";
+import { BarChart3, FileText, Layers, Settings, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { TopBar } from "@/components/TopBar";
+import { MorningBriefing } from "@/features/briefing/MorningBriefing";
+import { ToastBanner } from "@/components/ToastBanner";
 import { useAppStore } from "@/app/store";
 
 const navItems = [
   { to: "/", label: "行情", icon: BarChart3, end: true },
   { to: "/reports", label: "报告", icon: FileText, end: false },
   { to: "/symbols", label: "品种", icon: Layers, end: false },
+  { to: "/status", label: "状态", icon: Activity, end: false },
   { to: "/settings", label: "设置", icon: Settings, end: false },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { akshareOnline, jinshiOnline, statusMessage } = useAppStore();
+  const location = useLocation();
+  const { akshareOnline, jinshiOnline, jinshiCalendarReady, statusMessage } = useAppStore();
 
   const online = akshareOnline;
   const statusLabel = online
     ? jinshiOnline
-      ? "新浪 · 金十"
+      ? jinshiCalendarReady
+        ? "新浪 · 金十 · 日历"
+        : "新浪 · 金十"
       : "新浪"
     : "数据离线";
+  const onDashboard = location.pathname === "/" || location.pathname === "";
 
   return (
     <div className="flex h-screen bg-background text-foreground">
@@ -63,8 +70,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
+        {onDashboard && <MorningBriefing />}
         <main className="min-h-0 flex-1 overflow-hidden bg-background">{children}</main>
       </div>
+      <ToastBanner />
     </div>
   );
 }

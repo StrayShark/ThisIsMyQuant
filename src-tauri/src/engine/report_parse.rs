@@ -25,6 +25,23 @@ pub fn parse_llm_report(raw: &str) -> ParsedReport {
         };
     }
 
+    // 无 ```json fence 时，尝试从正文截取 JSON 对象
+    if let Some((json_body, start, end)) = extract_loose_json_object(raw) {
+        if let Some(dimension_summary) = parse_dimension_summary(&json_body) {
+            let mut content = String::new();
+            content.push_str(raw[..start].trim());
+            let tail = raw[end..].trim();
+            if !content.is_empty() && !tail.is_empty() {
+                content.push_str("\n\n");
+            }
+            content.push_str(tail);
+            return ParsedReport {
+                content: content.trim().to_string(),
+                dimension_summary: Some(dimension_summary),
+            };
+        }
+    }
+
     ParsedReport {
         content: raw.trim().to_string(),
         dimension_summary: None,
@@ -43,13 +60,39 @@ fn extract_json_fence(raw: &str) -> Option<(String, usize, usize)> {
     Some((json_body, start, end))
 }
 
+fn extract_loose_json_object(raw: &str) -> Option<(String, usize, usize)> {
+    let start = raw.find('{')?;
+    let end = raw.rfind('}')?;
+    if end <= start {
+        return None;
+    }
+    let json_body = raw[start..=end].trim().to_string();
+    Some((json_body, start, end + 1))
+}
+
 fn parse_dimension_summary(json_body: &str) -> Option<Value> {
-    let parsed: Value = serde_json::from_str(json_body).ok()?;
+    if let Some(v) = try_parse_dimension_summary(json_body) {
+        return Some(v);
+    }
+    // 容错：截取首个含 dimension_summary 的 JSON 对象
+    if let Some(start) = json_body.find('{') {
+        if let Some(end) = json_body.rfind('}') {
+            if end > start {
+                if let Some(v) = try_parse_dimension_summary(&json_body[start..=end]) {
+                    return Some(v);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn try_parse_dimension_summary(json_body: &str) -> Option<Value> {
+    let parsed: Value = serde_json::from_str(json_body.trim()).ok()?;
     if let Some(inner) = parsed.get("dimension_summary") {
         return Some(inner.clone());
     }
-    // 允许直接返回 { "demand": [...], ... }
-    if parsed.is_object() && parsed.get("dimension_summary").is_none() {
+    if parsed.is_object() {
         return Some(parsed);
     }
     None
@@ -87,6 +130,15 @@ mod tests {
         assert!(!parsed.content.contains("```json"));
         let ds = parsed.dimension_summary.unwrap();
         assert_eq!(ds["demand"][0], "地产偏弱");
+    }
+
+    #[test]
+    fn parses_loose_json_without_fence() {
+        let raw = r#"前置说明
+{"dimension_summary":{"demand":["需求偏弱"]}}
+正文"#;
+        let parsed = parse_llm_report(raw);
+        assert!(parsed.dimension_summary.is_some());
     }
 
     #[test]

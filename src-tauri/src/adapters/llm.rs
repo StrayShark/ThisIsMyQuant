@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use futures_util::StreamExt;
 use reqwest::Client;
@@ -12,6 +13,7 @@ pub struct LlmRouter {
     clients: HashMap<String, LlmProviderConfig>,
     default: String,
     http: Client,
+    last_errors: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl LlmRouter {
@@ -28,7 +30,24 @@ impl LlmRouter {
         Self {
             clients,
             default,
-            http: Client::new(),
+            http: Client::builder()
+                .timeout(std::time::Duration::from_secs(180))
+                .build()
+                .expect("llm http client"),
+            last_errors: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn last_errors(&self) -> HashMap<String, String> {
+        self.last_errors
+            .lock()
+            .map(|m| m.clone())
+            .unwrap_or_default()
+    }
+
+    fn record_error(&self, provider: &str, err: &str) {
+        if let Ok(mut m) = self.last_errors.lock() {
+            m.insert(provider.to_string(), err.to_string());
         }
     }
 
@@ -85,18 +104,19 @@ impl LlmRouter {
         system: &str,
         provider: Option<&str>,
     ) -> AppResult<String> {
-        self.complete_with_temperature(prompt, system, provider, 0.3)
+        self.complete_with_provider(prompt, system, provider)
             .await
+            .map(|(content, _)| content)
     }
 
-    /// 低温 JSON 输出（资讯分类等结构化任务）。
-    pub async fn complete_json(
+    /// 返回 (正文, 实际使用的 provider 名称)，主 provider 失败时自动切换备用。
+    pub async fn complete_with_provider(
         &self,
         prompt: &str,
         system: &str,
         provider: Option<&str>,
-    ) -> AppResult<String> {
-        self.complete_with_temperature(prompt, system, provider, 0.0)
+    ) -> AppResult<(String, String)> {
+        self.complete_with_temperature_and_provider(prompt, system, provider, 0.3)
             .await
     }
 
@@ -107,15 +127,28 @@ impl LlmRouter {
         provider: Option<&str>,
         temperature: f32,
     ) -> AppResult<String> {
+        self.complete_with_temperature_and_provider(prompt, system, provider, temperature)
+            .await
+            .map(|(c, _)| c)
+    }
+
+    async fn complete_with_temperature_and_provider(
+        &self,
+        prompt: &str,
+        system: &str,
+        provider: Option<&str>,
+        temperature: f32,
+    ) -> AppResult<(String, String)> {
         let mut last_err = String::new();
         for cfg in self.ordered(provider) {
             match self
                 .complete_one(cfg, prompt, system, temperature)
                 .await
             {
-                Ok(s) => return Ok(s),
+                Ok(s) => return Ok((s, cfg.name.clone())),
                 Err(e) => {
                     log::warn!("{} complete failed: {e}", cfg.name);
+                    self.record_error(&cfg.name, &e.to_string());
                     last_err = e.to_string();
                 }
             }
@@ -156,22 +189,34 @@ impl LlmRouter {
             .ok_or_else(|| AppError::Msg("empty LLM response".into()))
     }
 
+    /// 低温 JSON 输出（资讯分类等结构化任务）。
+    pub async fn complete_json(
+        &self,
+        prompt: &str,
+        system: &str,
+        provider: Option<&str>,
+    ) -> AppResult<String> {
+        self.complete_with_temperature(prompt, system, provider, 0.0)
+            .await
+    }
+
     pub async fn stream<F>(
         &self,
         prompt: &str,
         system: &str,
         provider: Option<&str>,
         mut on_token: F,
-    ) -> AppResult<()>
+    ) -> AppResult<String>
     where
         F: FnMut(String) + Send,
     {
         let mut last_err = String::new();
         for cfg in self.ordered(provider) {
             match self.stream_one(cfg, prompt, system, &mut on_token).await {
-                Ok(()) => return Ok(()),
+                Ok(()) => return Ok(cfg.name.clone()),
                 Err(e) => {
                     log::warn!("{} stream failed: {e}", cfg.name);
+                    self.record_error(&cfg.name, &e.to_string());
                     last_err = e.to_string();
                 }
             }

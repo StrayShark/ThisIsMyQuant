@@ -1,7 +1,7 @@
 /** Cursor 风格极简顶栏：合约搜索。 */
 import { useCallback, useEffect, useState } from "react";
 import { Search } from "lucide-react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { useAppStore } from "@/app/store";
 import { findFuturesSymbol, getFuturesCatalog, getFuturesProduct } from "@/data/futures";
@@ -10,7 +10,6 @@ import { ensureMarketSubscription } from "@/lib/market-subscribe";
 
 export function TopBar() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { currentSymbol, setCurrentSymbol, watchlist } = useAppStore();
   useFuturesCatalog("all");
   const searchProducts = getFuturesCatalog("all").flatMap((s) => s.products);
@@ -26,8 +25,8 @@ export function TopBar() {
     if (!sym) return;
     setCurrentSymbol(sym);
     void ensureMarketSubscription(sym);
-    if (location.pathname !== "/") navigate("/");
-  }, [query, setCurrentSymbol, navigate, location.pathname]);
+    navigate(`/symbols/${sym}`);
+  }, [query, setCurrentSymbol, navigate]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
