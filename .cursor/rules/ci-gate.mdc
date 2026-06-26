@@ -7,13 +7,17 @@ alwaysApply: true
 
 ## 推送前
 
-1. `pnpm install` 会自动启用 pre-push 钩子；**每次 `git push` 前自动运行 `pnpm test:ci`**。
-2. 也可手动运行 `bash scripts/ci-local.sh` 预检。
-3. **禁止**在 GitHub Actions CI 失败时 push 到 `main`/`master`（除非明确使用 `--no-verify` 且已知风险）。
+1. `pnpm install` 会自动启用 pre-push 钩子。
+2. **每次 `git push` 前自动依次运行**：
+   - `pnpm test:ci` — Mac 本地（frontend + e2e + Rust）
+   - `pnpm test:ci:linux` — Docker Ubuntu（Tauri 系统库 + `cargo test --lib`）
+3. 手动预检等价命令：`pnpm test:ci:all`
+4. **禁止**在任一检查或 GitHub Actions 失败时 push（除非 `--no-verify` 且已知风险）。
 
-## CI 覆盖范围
+## 前置
 
-与 `.github/workflows/ci.yml` 一致：`cargo test --lib`、前端 `tsc` / `lint` / `build`、Playwright `ui-mock` E2E。
+- Docker Desktop 须已启动（pre-push 第二步需要）
+- E2E 首次需：`pnpm --dir frontend exec playwright install chromium`
 
 ## 依赖锁定
 

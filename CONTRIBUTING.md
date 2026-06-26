@@ -1,55 +1,39 @@
 # 贡献规范
 
-## 推送前必做（与 GitHub CI 一致）
+## 推送前必做
 
-`pnpm install` 会自动配置 pre-push 钩子，**每次 `git push` 前自动运行**：
-
-```bash
-pnpm test:ci   # 即 scripts/ci-local.sh
-```
-
-手动重装钩子：
+`pnpm install` 会自动配置 pre-push 钩子。**每次 `git push` 前自动运行以下两项**（约 5–20 分钟）：
 
 ```bash
-bash scripts/install-githooks.sh
+pnpm test:ci          # [1] Mac：frontend + e2e + Rust
+pnpm test:ci:linux    # [2] Docker：Ubuntu Tauri 系统库 + cargo test --lib
 ```
+
+手动一次性跑完：
+
+```bash
+pnpm test:ci:all
+```
+
+**前置：** Docker Desktop 已启动；E2E 首次需 `pnpm --dir frontend exec playwright install chromium`
+
+重装钩子：`bash scripts/install-githooks.sh`
 
 紧急跳过（不推荐）：`git push --no-verify`
 
-### 检查项说明
+### 检查项
 
-| 步骤 | 命令 | 对应 CI job |
-|------|------|-------------|
-| Rust 单元测试 | `cargo test --manifest-path src-tauri/Cargo.toml --lib` | rust |
-| 前端类型（与 build 相同） | `pnpm --dir frontend exec tsc -b` | frontend |
-| ESLint | `pnpm --dir frontend run lint` | frontend |
-| 生产构建 | `pnpm --dir frontend run build` | frontend / e2e |
-| Mock E2E | `VITE_E2E_MOCK=true pnpm --dir frontend exec playwright test --project=ui-mock` | e2e |
+| 命令 | 内容 | 对应 CI |
+|------|------|---------|
+| `test:ci` | gitignore 自检、cargo test、tsc、lint、build、e2e mock | frontend + e2e + rust（macOS） |
+| `test:ci:linux` | Ubuntu 容器、Tauri apt 依赖、cargo test --lib | rust（Linux） |
 
-首次跑 E2E 需安装浏览器：`pnpm --dir frontend exec playwright install chromium`
+### 常见踩坑
 
-### 验证 Linux 构建（Docker，与 CI rust job 对齐）
-
-Mac 本地 `pnpm test:ci` 不会编译 Linux GTK 栈。需 Docker：
-
-```bash
-pnpm test:ci:linux
-# 等价于 bash scripts/ci-linux-docker.sh
-```
-
-首次会拉取 `ubuntu:24.04` 镜像并安装 Rust，约 5–15 分钟。
-
-推送前完整检查建议：
-
-```bash
-pnpm test:ci          # Mac：frontend + e2e + Rust（macOS 路径）
-pnpm test:ci:linux    # Docker：Ubuntu + Tauri 系统库 + cargo test --lib
-```
-
-- **`.gitignore` 中的 `data/`** 会忽略所有名为 `data` 的目录，包括 `frontend/src/data/`。应使用 `/data/` 仅忽略仓库根目录运行时数据。
-- 修改 `frontend/package.json` 后须提交 `frontend/pnpm-lock.yaml`。
-- Rust CI 在 **Ubuntu** 上编译 Tauri，需 GTK/WebKit 系统库；Mac 本地预检不会覆盖这一步。Release Ubuntu 矩阵同样依赖 `scripts/tauri-linux-deps.sh`。
+- **`.gitignore` 的 `data/`** 会误伤 `frontend/src/data/`，应写 `/data/`
+- 修改 `frontend/package.json` 后须提交 `frontend/pnpm-lock.yaml`
+- Mac 上 `test:ci` 不能替代 `test:ci:linux`（GTK/WebKit 仅 Linux 编译链）
 
 ## 远程分支保护
 
-仓库管理员在 GitHub **Settings → Branches → main** 启用 **Require status checks**，勾选 `rust`、`frontend`、`e2e`。
+GitHub **Settings → Branches → main** 启用 **Require status checks**：`rust`、`frontend`、`e2e`

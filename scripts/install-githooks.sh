@@ -10,7 +10,7 @@ if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
 fi
 
 git -C "$ROOT" config core.hooksPath .githooks
-chmod +x "$ROOT/.githooks/pre-push" "$ROOT/scripts/ci-local.sh" 2>/dev/null || true
+chmod +x "$ROOT/.githooks/pre-push" "$ROOT/scripts/ci-local.sh" "$ROOT/scripts/ci-linux-docker.sh" "$ROOT/scripts/ci-pre-push.sh" 2>/dev/null || true
 
 if [[ "${CI:-}" == "true" || "${CI:-}" == "1" ]]; then
   exit 0

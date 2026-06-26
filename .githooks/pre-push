@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# push 前自动执行与 GitHub CI 一致的本地检查。
+# push 前自动执行完整 CI（Mac + Docker Linux）。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo ""
-echo "▶ pre-push: 运行 CI 检查（cargo test / tsc / lint / build / e2e）…"
+echo "▶ pre-push: 运行完整 CI（test:ci + test:ci:linux）…"
+echo "  预计 5–20 分钟（含 Docker 编译）"
 echo "  跳过检查请使用: git push --no-verify"
 echo ""
 
-exec "$ROOT/scripts/ci-local.sh"
+exec "$ROOT/scripts/ci-pre-push.sh"
