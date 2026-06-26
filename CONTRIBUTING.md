@@ -2,16 +2,19 @@
 
 ## 推送前必做（与 GitHub CI 一致）
 
+`pnpm install` 会自动配置 pre-push 钩子，**每次 `git push` 前自动运行**：
+
 ```bash
-pnpm test:ci
-# 等价于 bash scripts/ci-local.sh
+pnpm test:ci   # 即 scripts/ci-local.sh
 ```
 
-通过后再 push。首次建议安装 pre-push 钩子，未过检时自动拦截：
+手动重装钩子：
 
 ```bash
 bash scripts/install-githooks.sh
 ```
+
+紧急跳过（不推荐）：`git push --no-verify`
 
 ### 检查项说明
 

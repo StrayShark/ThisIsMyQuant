@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# 推送前必须通过本地 CI 检查（与 .github/workflows/ci.yml 对齐）。
+# push 前自动执行与 GitHub CI 一致的本地检查。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+echo ""
+echo "▶ pre-push: 运行 CI 检查（cargo test / tsc / lint / build / e2e）…"
+echo "  跳过检查请使用: git push --no-verify"
+echo ""
+
 exec "$ROOT/scripts/ci-local.sh"

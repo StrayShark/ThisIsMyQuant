@@ -7,9 +7,9 @@ alwaysApply: true
 
 ## 推送前
 
-1. 本地运行 `bash scripts/ci-local.sh`，全部通过后再 push。
-2. 首次克隆后执行 `bash scripts/install-githooks.sh`，启用 pre-push 钩子自动拦截未过检的推送。
-3. **禁止**在 GitHub Actions CI 失败时 push 到 `main`/`master`；应先修复、本地过检、再推送。
+1. `pnpm install` 会自动启用 pre-push 钩子；**每次 `git push` 前自动运行 `pnpm test:ci`**。
+2. 也可手动运行 `bash scripts/ci-local.sh` 预检。
+3. **禁止**在 GitHub Actions CI 失败时 push 到 `main`/`master`（除非明确使用 `--no-verify` 且已知风险）。
 
 ## CI 覆盖范围
 
