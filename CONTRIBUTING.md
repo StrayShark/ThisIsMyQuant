@@ -28,7 +28,23 @@ bash scripts/install-githooks.sh
 
 首次跑 E2E 需安装浏览器：`pnpm --dir frontend exec playwright install chromium`
 
-### 常见踩坑
+### 验证 Linux 构建（Docker，与 CI rust job 对齐）
+
+Mac 本地 `pnpm test:ci` 不会编译 Linux GTK 栈。需 Docker：
+
+```bash
+pnpm test:ci:linux
+# 等价于 bash scripts/ci-linux-docker.sh
+```
+
+首次会拉取 `ubuntu:24.04` 镜像并安装 Rust，约 5–15 分钟。
+
+推送前完整检查建议：
+
+```bash
+pnpm test:ci          # Mac：frontend + e2e + Rust（macOS 路径）
+pnpm test:ci:linux    # Docker：Ubuntu + Tauri 系统库 + cargo test --lib
+```
 
 - **`.gitignore` 中的 `data/`** 会忽略所有名为 `data` 的目录，包括 `frontend/src/data/`。应使用 `/data/` 仅忽略仓库根目录运行时数据。
 - 修改 `frontend/package.json` 后须提交 `frontend/pnpm-lock.yaml`。

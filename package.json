@@ -12,6 +12,7 @@
     "release:smoke": "bash scripts/release-smoke.sh",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --lib && cargo test --manifest-path src-tauri/Cargo.toml --test integration_test -- --nocapture",
     "test:ci": "bash scripts/ci-local.sh",
+    "test:ci:linux": "bash scripts/ci-linux-docker.sh",
     "prepare": "bash scripts/install-githooks.sh",
     "icon:gen": "node scripts/gen-icons.mjs"
   },
