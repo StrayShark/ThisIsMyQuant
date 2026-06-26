@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# 推送前必须通过本地 CI 检查（与 .github/workflows/ci.yml 对齐）。
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/scripts/ci-local.sh"

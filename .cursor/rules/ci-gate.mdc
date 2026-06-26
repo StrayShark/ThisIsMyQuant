@@ -1,0 +1,20 @@
+---
+description: 推送前必须通过 CI；禁止在 CI 失败时 push
+alwaysApply: true
+---
+
+# CI 门禁
+
+## 推送前
+
+1. 本地运行 `bash scripts/ci-local.sh`，全部通过后再 push。
+2. 首次克隆后执行 `bash scripts/install-githooks.sh`，启用 pre-push 钩子自动拦截未过检的推送。
+3. **禁止**在 GitHub Actions CI 失败时 push 到 `main`/`master`；应先修复、本地过检、再推送。
+
+## CI 覆盖范围
+
+与 `.github/workflows/ci.yml` 一致：`cargo test --lib`、前端 `tsc` / `lint` / `build`、Playwright `ui-mock` E2E。
+
+## 依赖锁定
+
+`frontend/pnpm-lock.yaml` 必须纳入版本控制；修改 `package.json` 后需更新 lockfile 并一并提交。

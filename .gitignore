@@ -10,7 +10,6 @@ dist/
 dist-ssr/
 .vite/
 *.local
-pnpm-lock.yaml
 package-lock.json
 yarn.lock
 

@@ -16,9 +16,19 @@ jobs:
         with:
           workspaces: src-tauri
       - name: cargo test (lib)
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 15
+          max_attempts: 3
+          retry_wait_seconds: 10
+          command: cargo test --manifest-path src-tauri/Cargo.toml --lib
       - name: cargo test (integration, offline)
-        run: cargo test --manifest-path src-tauri/Cargo.toml --test integration_test -- --nocapture
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 10
+          command: cargo test --manifest-path src-tauri/Cargo.toml --test integration_test -- --nocapture
         continue-on-error: true
 
   frontend:

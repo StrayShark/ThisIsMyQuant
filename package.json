@@ -11,7 +11,7 @@
     "test:e2e:client": "bash scripts/e2e-client.sh",
     "release:smoke": "bash scripts/release-smoke.sh",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --lib && cargo test --manifest-path src-tauri/Cargo.toml --test integration_test -- --nocapture",
-    "test:ci": "cargo test --manifest-path src-tauri/Cargo.toml --lib && pnpm --dir frontend exec tsc --noEmit && pnpm --dir frontend run build",
+    "test:ci": "bash scripts/ci-local.sh",
     "icon:gen": "node scripts/gen-icons.mjs"
   },
   "devDependencies": {
