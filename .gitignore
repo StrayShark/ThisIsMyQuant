@@ -17,7 +17,7 @@ yarn.lock
 src-tauri/target/
 
 # -------------------- 数据库与数据 --------------------
-data/
+/data/
 *.db
 *.sqlite
 *.sqlite3

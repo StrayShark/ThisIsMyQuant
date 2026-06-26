@@ -14,3 +14,5 @@ bash scripts/install-githooks.sh   # 可选：推送前自动跑 CI 检查
 ```
 
 首次启动在 Landing 页填写大模型 API Key；也可在设置页修改。Debug 构建会自动从 `.env` 或 `~/global_env/.env` 导入 LLM Key（若已配置）。
+
+推送前运行 `pnpm test:ci` 确保与 GitHub Actions 一致；详见 [CONTRIBUTING.md](CONTRIBUTING.md)。

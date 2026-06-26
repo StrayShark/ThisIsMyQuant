@@ -1,28 +1,36 @@
 # 贡献规范
 
-## CI 门禁
-
-推送至 `main` / `master` 前须通过 CI。本地检查：
+## 推送前必做（与 GitHub CI 一致）
 
 ```bash
-bash scripts/ci-local.sh
+pnpm test:ci
+# 等价于 bash scripts/ci-local.sh
 ```
 
-安装 pre-push 钩子（推送前自动运行上述检查）：
+通过后再 push。首次建议安装 pre-push 钩子，未过检时自动拦截：
 
 ```bash
 bash scripts/install-githooks.sh
 ```
 
-## 修改前端依赖
+### 检查项说明
 
-`frontend/pnpm-lock.yaml` 已纳入版本控制。更新依赖后：
+| 步骤 | 命令 | 对应 CI job |
+|------|------|-------------|
+| Rust 单元测试 | `cargo test --manifest-path src-tauri/Cargo.toml --lib` | rust |
+| 前端类型（与 build 相同） | `pnpm --dir frontend exec tsc -b` | frontend |
+| ESLint | `pnpm --dir frontend run lint` | frontend |
+| 生产构建 | `pnpm --dir frontend run build` | frontend / e2e |
+| Mock E2E | `VITE_E2E_MOCK=true pnpm --dir frontend exec playwright test --project=ui-mock` | e2e |
 
-```bash
-cd frontend && pnpm install
-git add frontend/package.json frontend/pnpm-lock.yaml
-```
+首次跑 E2E 需安装浏览器：`pnpm --dir frontend exec playwright install chromium`
 
-## GitHub Actions
+### 常见踩坑
 
-工作流定义见 `.github/workflows/ci.yml`。远程仓库建议为 `main` 分支启用 **Require status checks to pass**（需仓库管理员在 GitHub Settings → Branches 配置）。
+- **`.gitignore` 中的 `data/`** 会忽略所有名为 `data` 的目录，包括 `frontend/src/data/`。应使用 `/data/` 仅忽略仓库根目录运行时数据。
+- 修改 `frontend/package.json` 后须提交 `frontend/pnpm-lock.yaml`。
+- Rust CI 若因 crates.io 网络抖动失败，本地 `cargo test --lib` 通过即可重跑 CI；workflow 已含 `cargo fetch` 重试。
+
+## 远程分支保护
+
+仓库管理员在 GitHub **Settings → Branches → main** 启用 **Require status checks**，勾选 `rust`、`frontend`、`e2e`。

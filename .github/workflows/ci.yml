@@ -15,6 +15,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      - name: cargo fetch
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 15
+          command: cargo fetch --manifest-path src-tauri/Cargo.toml --locked
       - name: cargo test (lib)
         uses: nick-fields/retry@v3
         with:
@@ -43,11 +50,11 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec tsc --noEmit
+      - run: pnpm exec tsc -b
       - run: pnpm run lint
       - run: pnpm run build
 
@@ -63,7 +70,7 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
