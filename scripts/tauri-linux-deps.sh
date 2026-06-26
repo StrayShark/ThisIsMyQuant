@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Tauri 2 在 Linux 上编译所需的系统库（CI / Release Ubuntu 矩阵）。
+# Tauri 2 在 Linux 上编译所需的系统库（CI / Release / Docker）。
 set -euo pipefail
 
 if [[ "$(uname -s)" != "Linux" ]]; then
   exit 0
 fi
 
-sudo apt-get update
-sudo apt-get install -y \
+# shellcheck source=linux-apt.sh
+source "$(cd "$(dirname "$0")" && pwd)/linux-apt.sh"
+
+apt_update
+apt_get install -y \
   build-essential \
   pkg-config \
   libssl-dev \

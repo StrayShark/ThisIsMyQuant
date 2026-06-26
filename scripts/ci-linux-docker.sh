@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# 在 Docker Ubuntu 中复现 CI rust job（Tauri Linux 系统依赖 + cargo test --lib）。
+# 在 Docker 中复现 CI rust job（Tauri Linux 系统依赖 + cargo test --lib）。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-IMAGE="${CI_LINUX_IMAGE:-ubuntu:24.04}"
+PLATFORM="${CI_LINUX_PLATFORM:-linux/amd64}"
+IMAGE="${CI_LINUX_IMAGE:-thisismyquant-ci-linux:local}"
+DOCKERFILE="${ROOT}/scripts/docker/Dockerfile.ci-linux"
+APT_MIRROR="${APT_MIRROR:-http://mirrors.aliyun.com/debian}"
+HOST_CARGO="${CARGO_HOME_HOST:-${HOME}/.cargo}"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "ERROR: 需要安装 Docker Desktop 或 docker CLI" >&2
@@ -15,30 +19,46 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> Linux CI (Docker ${IMAGE})"
+if ! docker image inspect "${IMAGE}" >/dev/null 2>&1; then
+  echo "==> 首次运行：构建 CI Linux 镜像（含 Tauri 依赖，约 3–10 分钟）"
+  echo "    platform=${PLATFORM} mirror=${APT_MIRROR}"
+  docker build \
+    --platform "${PLATFORM}" \
+    --build-arg "APT_MIRROR=${APT_MIRROR}" \
+    -f "${DOCKERFILE}" \
+    -t "${IMAGE}" \
+    "${ROOT}"
+fi
+
+CARGO_MOUNTS=()
+if [[ -d "${HOST_CARGO}/registry" ]]; then
+  echo "    复用本机 Cargo 缓存: ${HOST_CARGO}/registry"
+  CARGO_MOUNTS+=(-v "${HOST_CARGO}/registry:/usr/local/cargo/registry")
+fi
+if [[ -d "${HOST_CARGO}/git" ]]; then
+  CARGO_MOUNTS+=(-v "${HOST_CARGO}/git:/usr/local/cargo/git")
+fi
+
+echo "==> Linux CI (Docker ${IMAGE}, platform=${PLATFORM})"
 echo "    挂载: ${ROOT}"
+echo "    重建镜像: pnpm test:ci:linux:rebuild"
 
 docker run --rm \
+  --platform "${PLATFORM}" \
   -v "${ROOT}:/app" \
+  "${CARGO_MOUNTS[@]}" \
   -w /app \
-  -e DEBIAN_FRONTEND=noninteractive \
+  -e CARGO_TERM_COLOR=always \
+  -e CARGO_HOME=/usr/local/cargo \
   "${IMAGE}" \
-  bash -lc '
+  bash -c '
 set -euo pipefail
+export PATH="/usr/local/cargo/bin:${PATH}"
+mkdir -p "${CARGO_HOME}"
+cp scripts/docker/cargo-config.toml "${CARGO_HOME}/config.toml"
 
-echo "==> apt: base tools"
-apt-get update -qq
-apt-get install -y -qq curl ca-certificates git >/dev/null
-
-echo "==> Tauri Linux dependencies"
-bash scripts/tauri-linux-deps.sh
-
-if ! command -v cargo >/dev/null 2>&1; then
-  echo "==> rustup (stable)"
-  curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-  # shellcheck disable=SC1091
-  source "$HOME/.cargo/env"
-fi
+echo "==> cargo fetch (locked)"
+cargo fetch --manifest-path src-tauri/Cargo.toml --locked
 
 echo "==> cargo test (lib)"
 cargo test --manifest-path src-tauri/Cargo.toml --lib

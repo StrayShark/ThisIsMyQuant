@@ -1,0 +1,17 @@
+# Docker / 国内网络：crates.io 镜像（复制到容器 CARGO_HOME/config.toml）
+[source.crates-io]
+replace-with = "ustc"
+
+[source.ustc]
+registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+
+[registries.ustc]
+index = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+
+[net]
+retry = 10
+git-fetch-with-cli = true
+
+[http]
+timeout = 600
+multiplexing = false

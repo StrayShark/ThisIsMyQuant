@@ -1,0 +1,27 @@
+# 预装 Tauri Linux 构建依赖，避免每次 test:ci:linux 重复 apt 安装。
+FROM rust:1-bookworm
+
+ARG APT_MIRROR=
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN set -eux; \
+    if [ -n "${APT_MIRROR}" ]; then \
+      if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+        sed -i "s|http://deb.debian.org/debian-security|${APT_MIRROR}-security|g" /etc/apt/sources.list.d/debian.sources || true; \
+      elif [ -f /etc/apt/sources.list ]; then \
+        sed -i "s|deb.debian.org|${APT_MIRROR#http://}|g" /etc/apt/sources.list; \
+      fi; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      build-essential \
+      pkg-config \
+      libssl-dev \
+      libwebkit2gtk-4.1-dev \
+      libayatana-appindicator3-dev \
+      librsvg2-dev \
+      patchelf; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app

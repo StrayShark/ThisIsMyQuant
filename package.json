@@ -13,6 +13,7 @@
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --lib && cargo test --manifest-path src-tauri/Cargo.toml --test integration_test -- --nocapture",
     "test:ci": "bash scripts/ci-local.sh",
     "test:ci:linux": "bash scripts/ci-linux-docker.sh",
+    "test:ci:linux:rebuild": "docker rmi thisismyquant-ci-linux:local 2>/dev/null || true; bash scripts/ci-linux-docker.sh",
     "test:ci:all": "bash scripts/ci-pre-push.sh",
     "prepare": "bash scripts/install-githooks.sh",
     "icon:gen": "node scripts/gen-icons.mjs"
