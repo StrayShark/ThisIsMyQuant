@@ -32,7 +32,7 @@ bash scripts/install-githooks.sh
 
 - **`.gitignore` 中的 `data/`** 会忽略所有名为 `data` 的目录，包括 `frontend/src/data/`。应使用 `/data/` 仅忽略仓库根目录运行时数据。
 - 修改 `frontend/package.json` 后须提交 `frontend/pnpm-lock.yaml`。
-- Rust CI 若因 crates.io 网络抖动失败，本地 `cargo test --lib` 通过即可重跑 CI；workflow 已含 `cargo fetch` 重试。
+- Rust CI 在 **Ubuntu** 上编译 Tauri，需 GTK/WebKit 系统库；Mac 本地预检不会覆盖这一步。Release Ubuntu 矩阵同样依赖 `scripts/tauri-linux-deps.sh`。
 
 ## 远程分支保护
 

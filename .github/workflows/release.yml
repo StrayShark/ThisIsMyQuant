@@ -32,6 +32,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Tauri Linux dependencies
+        if: matrix.platform == 'ubuntu-latest'
+        run: bash scripts/tauri-linux-deps.sh
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
