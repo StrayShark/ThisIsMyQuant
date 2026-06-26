@@ -17,6 +17,8 @@ pnpm test:ci:all
 
 **前置：** Docker Desktop 已启动；E2E 首次需 `pnpm --dir frontend exec playwright install chromium`
 
+`test:ci:linux` 首次会构建 Docker 镜像（约 3–10 分钟），之后约 5 分钟；复用本机 `~/.cargo` 缓存。重建镜像：`pnpm test:ci:linux:rebuild`
+
 重装钩子：`bash scripts/install-githooks.sh`
 
 紧急跳过（不推荐）：`git push --no-verify`
