@@ -27,7 +27,8 @@ echo "==> cargo test (lib)"
 cargo test --manifest-path src-tauri/Cargo.toml --lib
 
 echo "==> frontend install"
-pnpm --dir frontend install --frozen-lockfile
+# 非 TTY（pre-push / CI）下须禁用 modules  purge 确认，否则会静默失败
+CI=true pnpm --dir frontend install --frozen-lockfile --config.confirmModulesPurge=false
 
 echo "==> frontend typecheck (tsc -b，与 build 一致)"
 pnpm --dir frontend exec tsc -b
