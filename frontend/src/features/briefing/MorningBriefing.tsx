@@ -3,9 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Sunrise } from "lucide-react";
 import { api } from "@/api/client";
-import { useAppStore } from "@/app/store";
 import { Badge } from "@/components/ui/badge";
 import { getFuturesProduct } from "@/data/futures";
+import { useFuturesCatalog } from "@/hooks/useFuturesCatalog";
 import { isWithinHours, triggerLabel } from "@/data/calendar";
 
 import type { CalendarEvent } from "@/types";
@@ -38,7 +38,7 @@ function reportPreview(content: string, max = 48): string {
 }
 
 export function MorningBriefing() {
-  const watchlist = useAppStore((s) => s.watchlist);
+  const { data: sectors = [] } = useFuturesCatalog("core");
 
   const { data: reports } = useQuery({
     queryKey: ["reports-briefing"],
@@ -52,11 +52,15 @@ export function MorningBriefing() {
     staleTime: 300_000,
   });
 
-  const watchReports = useMemo(() => {
-    if (!reports?.length) return [];
-    const bases = new Set(watchlist.map(normalizeWatchSymbol));
+  const coreSymbols = useMemo(
+    () => new Set(sectors.flatMap((s) => s.products.map((p) => normalizeWatchSymbol(p.symbol)))),
+    [sectors]
+  );
+
+  const coreReports = useMemo(() => {
+    if (!reports?.length || coreSymbols.size === 0) return [];
     return reports
-      .filter((r) => bases.has(normalizeWatchSymbol(r.symbol)))
+      .filter((r) => coreSymbols.has(normalizeWatchSymbol(r.symbol)))
       .filter((r) => isRecent(r.created_at))
       .sort(
         (a, b) =>
@@ -64,14 +68,14 @@ export function MorningBriefing() {
           Date.parse(b.created_at) - Date.parse(a.created_at)
       )
       .slice(0, 4);
-  }, [reports, watchlist]);
+  }, [reports, coreSymbols]);
 
   const upcomingMacro = useMemo(
     () => (calendar ?? []).filter((e) => isWithinHours(e.pub_time, 48)).slice(0, 5),
     [calendar]
   );
 
-  if (watchReports.length === 0 && upcomingMacro.length === 0) {
+  if (coreReports.length === 0 && upcomingMacro.length === 0) {
     return null;
   }
 
@@ -83,10 +87,10 @@ export function MorningBriefing() {
           今日待关注
         </div>
 
-        {watchReports.length > 0 && (
+        {coreReports.length > 0 && (
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <span className="text-[11px] text-muted-foreground">关注品种报告</span>
-            {watchReports.map((r) => (
+            <span className="text-[11px] text-muted-foreground">品种报告</span>
+            {coreReports.map((r) => (
               <Link key={r.id} to={`/reports/${r.id}`} title={reportPreview(r.content, 120)}>
                 <Badge variant="secondary" className="max-w-[240px] cursor-pointer truncate font-normal hover:bg-muted">
                   {getFuturesProduct(r.symbol)?.name ?? r.symbol}

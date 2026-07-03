@@ -49,7 +49,11 @@ fn csv_escape(s: &str) -> String {
     }
 }
 
-pub fn parse_klines_csv(csv: &str, default_symbol: &str, interval: &str) -> Result<Vec<KLine>, String> {
+pub fn parse_klines_csv(
+    csv: &str,
+    default_symbol: &str,
+    interval: &str,
+) -> Result<Vec<KLine>, String> {
     let mut lines = csv.lines();
     let header = lines.next().ok_or("empty csv")?;
     if !header.to_lowercase().contains("start_time") {
@@ -77,20 +81,36 @@ pub fn parse_klines_csv(csv: &str, default_symbol: &str, interval: &str) -> Resu
         let (start, open, high, low, close, volume, turnover) = if cols.len() >= 9 {
             (
                 cols[2].clone(),
-                cols[3].parse().map_err(|_| format!("line {} bad open", i + 2))?,
-                cols[4].parse().map_err(|_| format!("line {} bad high", i + 2))?,
-                cols[5].parse().map_err(|_| format!("line {} bad low", i + 2))?,
-                cols[6].parse().map_err(|_| format!("line {} bad close", i + 2))?,
+                cols[3]
+                    .parse()
+                    .map_err(|_| format!("line {} bad open", i + 2))?,
+                cols[4]
+                    .parse()
+                    .map_err(|_| format!("line {} bad high", i + 2))?,
+                cols[5]
+                    .parse()
+                    .map_err(|_| format!("line {} bad low", i + 2))?,
+                cols[6]
+                    .parse()
+                    .map_err(|_| format!("line {} bad close", i + 2))?,
                 cols[7].parse().unwrap_or(0),
                 cols[8].parse().unwrap_or(0.0),
             )
         } else {
             (
                 cols[0].clone(),
-                cols[1].parse().map_err(|_| format!("line {} bad open", i + 2))?,
-                cols[2].parse().map_err(|_| format!("line {} bad high", i + 2))?,
-                cols[3].parse().map_err(|_| format!("line {} bad low", i + 2))?,
-                cols[4].parse().map_err(|_| format!("line {} bad close", i + 2))?,
+                cols[1]
+                    .parse()
+                    .map_err(|_| format!("line {} bad open", i + 2))?,
+                cols[2]
+                    .parse()
+                    .map_err(|_| format!("line {} bad high", i + 2))?,
+                cols[3]
+                    .parse()
+                    .map_err(|_| format!("line {} bad low", i + 2))?,
+                cols[4]
+                    .parse()
+                    .map_err(|_| format!("line {} bad close", i + 2))?,
                 cols[5].parse().unwrap_or(0),
                 cols[6].parse().unwrap_or(0.0),
             )

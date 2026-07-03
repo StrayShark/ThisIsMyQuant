@@ -1,4 +1,5 @@
-/** 从 CSS 变量读取 K 线主题色，与 tokens.css 对齐。 */
+/** 从 CSS 变量读取 K 线主题色；涨跌色固定为 --market-*，不随主题变化。 */
+
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
@@ -20,8 +21,8 @@ export function getChartTheme(): ChartTheme {
     fontFamily: cssVar("--font-mono"),
     gridColor: cssVar("--color-hairline-soft"),
     borderColor: cssVar("--color-hairline"),
-    upColor: cssVar("--color-up"),
-    downColor: cssVar("--color-down"),
+    upColor: cssVar("--market-up"),
+    downColor: cssVar("--market-down"),
   };
 }
 

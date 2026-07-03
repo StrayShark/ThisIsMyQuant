@@ -14,6 +14,7 @@ import type {
   NewsRecord,
 } from "@/types";
 import { e2eMockApi } from "@/api/e2e-mock";
+import { normalizeAppearance } from "@/lib/appearance";
 import { useAppStore } from "@/app/store";
 
 const E2E_MOCK = import.meta.env.VITE_E2E_MOCK === "true";
@@ -163,6 +164,13 @@ const liveApi = {
       await invoke<ApiResponse<{ unsubscribed: string[] }>>("market_unsubscribe", { symbols })
     ),
 
+  getRealtimeQuotes: async (symbols?: string[]) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").RealtimeQuote[]>>("get_realtime_quotes", {
+        symbols: symbols ?? null,
+      })
+    ),
+
   getRuntimeStatus: async () =>
     unwrap(await invoke<ApiResponse<import("@/types").RuntimeStatus>>("get_runtime_status")),
 
@@ -186,15 +194,21 @@ const liveApi = {
       })
     ),
 
-  getUserPreferences: async () =>
-    unwrap(await invoke<ApiResponse<import("@/types").UserPreferences>>("get_user_preferences")),
+  getUserPreferences: async () => {
+    const prefs = unwrap(
+      await invoke<ApiResponse<import("@/types").UserPreferences>>("get_user_preferences")
+    );
+    return { ...prefs, ...normalizeAppearance(prefs) };
+  },
 
-  saveUserPreferences: async (prefs: import("@/types").UserPreferences) =>
-    unwrap(
+  saveUserPreferences: async (prefs: import("@/types").UserPreferences) => {
+    const saved = unwrap(
       await invoke<ApiResponse<import("@/types").UserPreferences>>("save_user_preferences", {
         prefs,
       })
-    ),
+    );
+    return { ...saved, ...normalizeAppearance(saved) };
+  },
 
   reloadConfig: async () => unwrap(await invoke<ApiResponse<AppSettings>>("reload_config")),
 
@@ -224,6 +238,13 @@ const liveApi = {
       })
     ),
 
+  getProfessionalDashboard: async () =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").ProfessionalDashboard>>(
+        "get_professional_dashboard"
+      )
+    ),
+
   reclassifyNews: async (params: { news_ids: string[]; provider?: string; use_llm?: boolean }) =>
     unwrap(
       await invoke<ApiResponse<{ labels_saved: number }>>("reclassify_news", {
@@ -233,16 +254,16 @@ const liveApi = {
       })
     ),
 
-  triggerBatchAnalysis: async (params: {
-    symbols: string[];
+  triggerBatchAnalysis: async (params?: {
+    symbols?: string[];
     trigger?: string;
     provider?: string;
   }) =>
     unwrap(
       await invoke<ApiResponse<{ started: boolean; total: number }>>("trigger_batch_analysis", {
-        symbols: params.symbols,
-        trigger: params.trigger ?? null,
-        provider: params.provider ?? null,
+        symbols: params?.symbols ?? null,
+        trigger: params?.trigger ?? null,
+        provider: params?.provider ?? null,
       })
     ),
 

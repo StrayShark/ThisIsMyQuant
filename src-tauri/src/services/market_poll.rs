@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Instant;
 
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -7,7 +8,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::adapters::MarketFeed;
 use crate::engine::KlineAggregator;
-use crate::models::{Tick, TickUpdateEvent};
+use crate::models::{NotificationEvent, QuoteUpdateEvent, Tick, TickUpdateEvent};
 use crate::services::AnomalyWatcher;
 use crate::state::AppState;
 
@@ -57,6 +58,7 @@ impl MarketPollHandle {
         let task_slot_c = task_slot.clone();
         let handle = tokio::spawn(async move {
             let mut agg = KlineAggregator::new();
+            let mut last_realtime_error_toast: Option<Instant> = None;
             let dur = tokio::time::Duration::from_secs_f64(interval);
             loop {
                 let syms = symbols_task.lock().await.clone();
@@ -64,12 +66,26 @@ impl MarketPollHandle {
                     tokio::time::sleep(dur).await;
                     continue;
                 }
+                let mut ok_count = 0u32;
+                let mut fail_count = 0u32;
                 for sym in syms {
                     let ticks_enabled = state.config().ticks_enabled;
                     match feed.fetch_latest_tick(&sym).await {
                         Ok(Some(tick)) => {
+                            ok_count += 1;
                             emit_tick_update(&app, &tick);
                             emit_kline_updates(&app, &mut agg, &tick);
+                            let forming_1d = agg.current_bar(&tick.symbol, "1d");
+                            state.apply_tick_to_quotes(&tick, forming_1d).await;
+                            if let Some(q) = state
+                                .quote_cache
+                                .read()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .get(&tick.symbol)
+                                .cloned()
+                            {
+                                emit_quote_update(&app, &q);
+                            }
                             if ticks_enabled {
                                 let _ = state.db.save_tick(&tick);
                             }
@@ -77,10 +93,22 @@ impl MarketPollHandle {
                                 w.on_tick(&state, &app, &tick);
                             }
                         }
-                        Ok(None) => log::debug!("no tick for {sym}"),
-                        Err(e) => log::debug!("tick fetch failed {sym}: {e}"),
+                        Ok(None) => {
+                            fail_count += 1;
+                            log::debug!("no tick for {sym}");
+                        }
+                        Err(e) => {
+                            fail_count += 1;
+                            log::debug!("tick fetch failed {sym}: {e}");
+                        }
                     }
                 }
+                maybe_emit_realtime_failure(
+                    &app,
+                    &mut last_realtime_error_toast,
+                    ok_count,
+                    fail_count,
+                );
                 tokio::time::sleep(dur).await;
             }
         });
@@ -143,4 +171,49 @@ fn emit_kline_updates(app: &AppHandle, agg: &mut KlineAggregator, tick: &Tick) {
     for ev in agg.on_tick(tick) {
         let _ = app.emit("kline-update", &ev);
     }
+}
+
+fn emit_quote_update(app: &AppHandle, q: &crate::models::RealtimeQuote) {
+    let _ = app.emit(
+        "quote-update",
+        QuoteUpdateEvent {
+            msg_type: "quote".into(),
+            symbol: q.symbol.clone(),
+            last_price: q.last_price,
+            prev_close: q.prev_close,
+            change_pct: q.change_pct,
+            timestamp: q.timestamp.clone(),
+        },
+    );
+}
+
+const REALTIME_ERROR_TOAST_COOLDOWN_SECS: u64 = 60;
+
+fn maybe_emit_realtime_failure(
+    app: &AppHandle,
+    last_toast: &mut Option<Instant>,
+    ok_count: u32,
+    fail_count: u32,
+) {
+    if ok_count > 0 || fail_count == 0 {
+        return;
+    }
+    let now = Instant::now();
+    if last_toast
+        .map(|t| now.duration_since(t).as_secs() < REALTIME_ERROR_TOAST_COOLDOWN_SECS)
+        .unwrap_or(false)
+    {
+        return;
+    }
+    *last_toast = Some(now);
+    let _ = app.emit(
+        "notification",
+        NotificationEvent {
+            msg_type: "notification".into(),
+            level: "error".into(),
+            title: "实时行情不可用".into(),
+            body: "无法从数据源获取报价，请检查网络连接或 AKShare 行情服务".into(),
+            link: Some("/settings?section=schedule".into()),
+        },
+    );
 }

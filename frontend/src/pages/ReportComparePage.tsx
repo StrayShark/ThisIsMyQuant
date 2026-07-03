@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client";
-import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,15 +74,11 @@ export function ReportComparePage() {
   return (
     <div className="page-scroll">
       <div className="page-inner space-y-4">
-        <PageHeader
-          title="报告对比"
-          description="选择同品种两份报告，并排查看维度要点差异"
-          action={
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/reports">返回列表</Link>
-            </Button>
-          }
-        />
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/reports">返回列表</Link>
+          </Button>
+        </div>
 
         {reportsLoading ? (
           <Skeleton className="h-10 w-full max-w-2xl rounded-md" />

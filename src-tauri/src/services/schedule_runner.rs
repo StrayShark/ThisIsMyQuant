@@ -1,4 +1,4 @@
-//! 统一定时任务：每 N 小时拉取金融数据 + watchlist 全面分析。
+//! 统一定时任务：每 N 小时拉取金融数据 + 全部 core 品种全面分析。
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use crate::config::Config;
+use crate::engine::sectors;
 use crate::models::{dt_to_iso, ScheduleStatus};
 use crate::services::analysis_runner::run_analysis;
 use crate::services::data_fetch_cycle::run_data_fetch_cycle;
@@ -39,7 +40,7 @@ impl ScheduleHandle {
         status: ScheduleStatusHandle,
     ) -> Self {
         let hours = config.schedule_interval_hours.max(1);
-        let enabled = config.schedule_enabled && !config.watchlist.is_empty();
+        let enabled = config.schedule_enabled;
 
         let app_c = app.clone();
         let state_c = state.clone();
@@ -49,10 +50,7 @@ impl ScheduleHandle {
             loop {
                 let (cycle_enabled, interval_hours) = {
                     let cfg = state_c.config();
-                    (
-                        cfg.schedule_enabled && !cfg.watchlist.is_empty(),
-                        cfg.schedule_interval_hours.max(1),
-                    )
+                    (cfg.schedule_enabled, cfg.schedule_interval_hours.max(1))
                 };
                 {
                     let mut st = status_c.lock().await;
@@ -64,13 +62,8 @@ impl ScheduleHandle {
                         let cfg = state_c.config();
                         cfg.schedule_analysis_trigger.clone()
                     };
-                    if let Err(e) = run_full_cycle(
-                        &state_c,
-                        Some(&app_c),
-                        &trigger,
-                        status_c.clone(),
-                    )
-                    .await
+                    if let Err(e) =
+                        run_full_cycle(&state_c, Some(&app_c), &trigger, status_c.clone()).await
                     {
                         log::warn!("scheduled cycle failed: {e}");
                     }
@@ -88,7 +81,7 @@ impl ScheduleHandle {
                 "ScheduleRunner enabled: every {hours}h (data fetch + comprehensive analysis)"
             );
         } else {
-            log::info!("ScheduleRunner idle (disabled or empty watchlist); config changes apply without restart");
+            log::info!("ScheduleRunner idle (disabled); config changes apply without restart");
         }
 
         Self {
@@ -155,12 +148,7 @@ pub async fn run_comprehensive_analysis(
     app: Option<&AppHandle>,
     trigger: &str,
 ) -> (usize, usize, Vec<String>) {
-    let symbols: Vec<String> = state
-        .config()
-        .watchlist
-        .iter()
-        .map(|s| s.to_lowercase())
-        .collect();
+    let symbols = sectors::core_product_symbols();
     let total = symbols.len();
     let mut completed = 0usize;
     let mut errors = Vec::new();

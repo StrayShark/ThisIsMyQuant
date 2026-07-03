@@ -10,7 +10,8 @@ pub struct ParsedReport {
 
 /// 提取 ```json ... ``` 中的 dimension_summary，并从正文中移除该块。
 pub fn parse_llm_report(raw: &str) -> ParsedReport {
-    if let Some((json_body, start, end)) = extract_json_fence(raw) {
+    let raw = strip_thinking_blocks(raw);
+    if let Some((json_body, start, end)) = extract_json_fence(&raw) {
         let dimension_summary = parse_dimension_summary(&json_body);
         let mut content = String::new();
         content.push_str(raw[..start].trim());
@@ -20,13 +21,13 @@ pub fn parse_llm_report(raw: &str) -> ParsedReport {
         }
         content.push_str(tail);
         return ParsedReport {
-            content: content.trim().to_string(),
+            content: finalize_content(content.trim().to_string()),
             dimension_summary,
         };
     }
 
     // 无 ```json fence 时，尝试从正文截取 JSON 对象
-    if let Some((json_body, start, end)) = extract_loose_json_object(raw) {
+    if let Some((json_body, start, end)) = extract_loose_json_object(&raw) {
         if let Some(dimension_summary) = parse_dimension_summary(&json_body) {
             let mut content = String::new();
             content.push_str(raw[..start].trim());
@@ -36,16 +37,45 @@ pub fn parse_llm_report(raw: &str) -> ParsedReport {
             }
             content.push_str(tail);
             return ParsedReport {
-                content: content.trim().to_string(),
+                content: finalize_content(content.trim().to_string()),
                 dimension_summary: Some(dimension_summary),
             };
         }
     }
 
     ParsedReport {
-        content: raw.trim().to_string(),
+        content: finalize_content(raw.trim().to_string()),
         dimension_summary: None,
     }
+}
+
+fn finalize_content(content: String) -> String {
+    strip_thinking_blocks(&content)
+}
+
+/// 移除 DeepSeek 等模型输出的 think 推理块。
+fn strip_thinking_blocks(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    let open = format!("<{}>", "think");
+    let close = format!("</{}>", "think");
+    let mut result = String::new();
+    let mut i = 0usize;
+    while i < raw.len() {
+        if lower[i..].starts_with(&open) {
+            if let Some(rel) = lower[i..].find(&close) {
+                i += rel + close.len();
+                continue;
+            }
+            break;
+        }
+        if let Some(ch) = raw[i..].chars().next() {
+            result.push(ch);
+            i += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    result.trim().to_string()
 }
 
 fn extract_json_fence(raw: &str) -> Option<(String, usize, usize)> {
@@ -146,6 +176,18 @@ mod tests {
         let parsed = parse_llm_report("仅 Markdown 正文");
         assert!(parsed.dimension_summary.is_none());
         assert_eq!(parsed.content, "仅 Markdown 正文");
+    }
+
+    #[test]
+    fn strips_think_blocks_before_parse() {
+        let think_open = format!("<{}>", "think");
+        let think_close = format!("</{}>", "think");
+        let raw = format!(
+            "{think_open}Let me analyze the user request...\n{think_close}\n## 结论\n震荡为主。"
+        );
+        let parsed = parse_llm_report(&raw);
+        assert!(!parsed.content.to_lowercase().contains("think"));
+        assert!(parsed.content.contains("结论"));
     }
 
     #[test]

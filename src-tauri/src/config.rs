@@ -1,10 +1,12 @@
-pub mod user_prefs;
-pub mod llm_catalog;
 pub mod env_llm;
+pub mod llm_catalog;
+pub mod prefs_store;
+pub mod user_prefs;
 
-pub use user_prefs::UserPreferences;
-pub use llm_catalog::{build_provider_config, template, LLM_CATALOG};
 pub use env_llm::{collect_llm_credentials_from_env_files, default_llm_provider_from_env_files};
+pub use llm_catalog::{build_provider_config, template, LLM_CATALOG};
+pub use prefs_store::{load_user_preferences, preferences_path, save_user_preferences};
+pub use user_prefs::UserPreferences;
 
 use std::path::{Path, PathBuf};
 
@@ -14,7 +16,6 @@ pub struct Config {
     pub akshare_enabled: bool,
     pub akshare_realtime_enabled: bool,
     pub realtime_poll_interval: f64,
-    pub watchlist: Vec<String>,
     pub jinshi_enabled: bool,
     pub jinshi_api_base: String,
     pub jinshi_rili_api_base: String,
@@ -28,7 +29,7 @@ pub struct Config {
     pub llm_providers: Vec<LlmProviderConfig>,
     /// 定时任务周期内 LLM 分析使用的 trigger（scheduled / tomorrow / short_term 等）
     pub schedule_analysis_trigger: String,
-    /// 每日固定时刻对 watchlist 跑 tomorrow 分析
+    /// 每日固定时刻对全部 core 品种跑 tomorrow 分析
     pub daily_briefing_enabled: bool,
     pub daily_briefing_hour: u8,
     pub schedule_interval_hours: u64,
@@ -101,13 +102,9 @@ fn env_str(key: &str, default: &str) -> String {
 pub fn resolve_market_feed(raw: &str) -> String {
     let lower = raw.trim().to_lowercase();
     if matches!(lower.as_str(), "ctp" | "simnow") {
-        log::warn!(
-            "MARKET_FEED={raw}: CTP/SimNow 已移除，已自动改用 akshare_poll"
-        );
+        log::warn!("MARKET_FEED={raw}: CTP/SimNow 已移除，已自动改用 akshare_poll");
     } else if !lower.is_empty() && lower != "akshare_poll" {
-        log::warn!(
-            "MARKET_FEED={raw}: 未知行情源，已改用 akshare_poll"
-        );
+        log::warn!("MARKET_FEED={raw}: 未知行情源，已改用 akshare_poll");
     }
     "akshare_poll".into()
 }
@@ -136,7 +133,6 @@ impl Config {
             root.join(path_str)
         };
 
-        let watchlist: Vec<String> = Vec::new();
         let llm_providers: Vec<LlmProviderConfig> = Vec::new();
 
         Self {
@@ -144,7 +140,6 @@ impl Config {
             akshare_enabled: true,
             akshare_realtime_enabled: true,
             realtime_poll_interval: 5.0,
-            watchlist,
             jinshi_enabled: true,
             jinshi_api_base: env_str("JINSHI_API_BASE", "https://mp-api.jin10.com"),
             jinshi_rili_api_base: env_str(

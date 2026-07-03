@@ -5,12 +5,12 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
 
 use crate::config::UserPreferences;
+use crate::engine::dimensions;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AnalysisReport, CalendarEvent, Contract, DimensionFact, FollowupMessage, KLine, LiquiditySnapshot,
-    NewsClassification, NewsItemView, NewsClassificationView, NewsRecord, Tick, dt_to_iso,
+    dt_to_iso, AnalysisReport, CalendarEvent, Contract, DimensionFact, FollowupMessage, KLine,
+    LiquiditySnapshot, NewsClassification, NewsClassificationView, NewsItemView, NewsRecord, Tick,
 };
-use crate::engine::dimensions;
 
 pub struct Database {
     conn: Mutex<Connection>,
@@ -175,9 +175,7 @@ impl Database {
             return Ok(0);
         }
         let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
-        let mut stmt = conn.prepare(
-            "INSERT OR REPLACE INTO klines VALUES (?,?,?,?,?,?,?,?,?)",
-        )?;
+        let mut stmt = conn.prepare("INSERT OR REPLACE INTO klines VALUES (?,?,?,?,?,?,?,?,?)")?;
         for k in klines {
             stmt.execute(params![
                 k.symbol,
@@ -254,7 +252,10 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
         let mut count = 0usize;
         for id in news_ids {
-            count += conn.execute("DELETE FROM news_classifications WHERE news_id=?", params![id])?;
+            count += conn.execute(
+                "DELETE FROM news_classifications WHERE news_id=?",
+                params![id],
+            )?;
         }
         Ok(count)
     }
@@ -275,13 +276,7 @@ impl Database {
              ORDER BY start_time ASC LIMIT ?",
         )?;
         let rows = stmt.query_map(
-            params![
-                symbol,
-                interval,
-                dt_to_iso(start),
-                dt_to_iso(end),
-                limit
-            ],
+            params![symbol, interval, dt_to_iso(start), dt_to_iso(end), limit],
             |row| {
                 Ok(KLine {
                     symbol: row.get(0)?,
@@ -431,7 +426,9 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_latest_liquidity_map(&self) -> AppResult<std::collections::HashMap<String, LiquiditySnapshot>> {
+    pub fn get_latest_liquidity_map(
+        &self,
+    ) -> AppResult<std::collections::HashMap<String, LiquiditySnapshot>> {
         let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
         let mut stmt = conn.prepare(
             "SELECT l.symbol, l.volume_20d, l.turnover_20d, l.score, l.tier, l.scored_at
@@ -631,11 +628,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_dimension_facts(
-        &self,
-        symbol: &str,
-        limit: i64,
-    ) -> AppResult<Vec<DimensionFact>> {
+    pub fn get_dimension_facts(&self, symbol: &str, limit: i64) -> AppResult<Vec<DimensionFact>> {
         let sym = symbol.to_uppercase();
         let now = dt_to_iso(Utc::now());
         let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
@@ -675,9 +668,7 @@ impl Database {
         let mut stmt = conn.prepare(
             "SELECT events_json FROM calendar_cache WHERE cache_key=? ORDER BY fetched_at DESC LIMIT 1",
         )?;
-        let json: Option<String> = stmt
-            .query_row(params![cache_key], |row| row.get(0))
-            .ok();
+        let json: Option<String> = stmt.query_row(params![cache_key], |row| row.get(0)).ok();
         match json {
             Some(raw) => {
                 let events: Vec<CalendarEvent> =
@@ -772,7 +763,8 @@ impl Database {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
-    pub fn load_user_preferences(&self) -> AppResult<Option<UserPreferences>> {
+    /// 旧版 SQLite 存储，仅用于首次迁移至 JSON。
+    pub fn load_user_preferences_legacy(&self) -> AppResult<Option<UserPreferences>> {
         let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
         let mut stmt = conn.prepare("SELECT json FROM app_preferences WHERE id = 'default'")?;
         let mut rows = stmt.query([])?;
@@ -784,17 +776,6 @@ impl Database {
         } else {
             Ok(None)
         }
-    }
-
-    pub fn save_user_preferences(&self, prefs: &UserPreferences) -> AppResult<()> {
-        let json = serde_json::to_string(prefs)
-            .map_err(|e| AppError::Msg(format!("serialize preferences: {e}")))?;
-        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
-        conn.execute(
-            "INSERT OR REPLACE INTO app_preferences (id, json, updated_at) VALUES ('default', ?1, ?2)",
-            params![json, dt_to_iso(Utc::now())],
-        )?;
-        Ok(())
     }
 
     pub fn get_or_create_app_secret(&self, key: &str) -> AppResult<String> {
@@ -812,20 +793,13 @@ impl Database {
         Ok(value)
     }
 
-    pub fn list_llm_credentials(
-        &self,
-    ) -> AppResult<Vec<(String, String, String, String)>> {
+    pub fn list_llm_credentials(&self) -> AppResult<Vec<(String, String, String, String)>> {
         let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
         let mut stmt = conn.prepare(
             "SELECT provider, api_key_encrypted, base_url, model FROM llm_credentials ORDER BY provider",
         )?;
         let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-            ))
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
         })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
@@ -854,7 +828,10 @@ impl Database {
 
     pub fn delete_llm_credential(&self, provider: &str) -> AppResult<()> {
         let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
-        conn.execute("DELETE FROM llm_credentials WHERE provider = ?1", params![provider])?;
+        conn.execute(
+            "DELETE FROM llm_credentials WHERE provider = ?1",
+            params![provider],
+        )?;
         Ok(())
     }
 }
@@ -957,13 +934,16 @@ fn row_to_news_joined(
         }
         _ => None,
     };
-    Ok((item, classification.unwrap_or(NewsClassificationView {
-        symbol: String::new(),
-        dimension_code: String::new(),
-        dimension_label: String::new(),
-        confidence: 0.0,
-        method: String::new(),
-    })))
+    Ok((
+        item,
+        classification.unwrap_or(NewsClassificationView {
+            symbol: String::new(),
+            dimension_code: String::new(),
+            dimension_label: String::new(),
+            confidence: 0.0,
+            method: String::new(),
+        }),
+    ))
 }
 
 fn merge_news_rows(rows: Vec<(NewsItemView, NewsClassificationView)>) -> Vec<NewsItemView> {

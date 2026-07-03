@@ -16,8 +16,7 @@ pub fn merge_classifications(
     let mut map: HashMap<(String, String), NewsClassification> = HashMap::new();
     for label in rule.into_iter().chain(llm) {
         let key = (label.symbol.clone(), label.dimension_code.clone());
-        map
-            .entry(key)
+        map.entry(key)
             .and_modify(|existing| {
                 if label.confidence > existing.confidence
                     || (label.confidence == existing.confidence && label.method == "llm")
@@ -82,14 +81,16 @@ pub fn classify(news: &NewsRecord) -> Vec<NewsClassification> {
     let now = news.ingested_at.clone();
     scores
         .into_iter()
-        .map(|((symbol, dimension_code), confidence)| NewsClassification {
-            news_id: news.id.clone(),
-            symbol,
-            dimension_code,
-            confidence,
-            method: "rule".into(),
-            created_at: now.clone(),
-        })
+        .map(
+            |((symbol, dimension_code), confidence)| NewsClassification {
+                news_id: news.id.clone(),
+                symbol,
+                dimension_code,
+                confidence,
+                method: "rule".into(),
+                created_at: now.clone(),
+            },
+        )
         .collect()
 }
 
@@ -173,11 +174,12 @@ fn append_macro_only_labels(text: &str, scores: &mut HashMap<(String, String), f
             }
             let sym = product.symbol.to_uppercase();
             if china && dims.contains(&"macro") && dimension_allowed(text, "macro") {
-                scores
-                    .entry((sym.clone(), "macro".into()))
-                    .or_insert(0.72);
+                scores.entry((sym.clone(), "macro".into())).or_insert(0.72);
             }
-            if us && dims.contains(&"overseas_finance") && dimension_allowed(text, "overseas_finance") {
+            if us
+                && dims.contains(&"overseas_finance")
+                && dimension_allowed(text, "overseas_finance")
+            {
                 scores
                     .entry((sym, "overseas_finance".into()))
                     .or_insert(0.72);
@@ -213,8 +215,12 @@ mod tests {
             52018,
         );
         let labels = classify(&news);
-        assert!(labels.iter().any(|l| l.symbol == "RB0" && l.dimension_code == "inventory"));
-        assert!(labels.iter().any(|l| l.symbol == "RB0" && l.dimension_code == "demand"));
+        assert!(labels
+            .iter()
+            .any(|l| l.symbol == "RB0" && l.dimension_code == "inventory"));
+        assert!(labels
+            .iter()
+            .any(|l| l.symbol == "RB0" && l.dimension_code == "demand"));
     }
 
     #[test]
@@ -243,9 +249,8 @@ mod tests {
         );
         let labels = classify(&news);
         assert!(
-            labels
-                .iter()
-                .any(|l| l.dimension_code == "overseas_finance" && (l.symbol == "AU0" || l.symbol == "CU0")),
+            labels.iter().any(|l| l.dimension_code == "overseas_finance"
+                && (l.symbol == "AU0" || l.symbol == "CU0")),
             "expected overseas_finance label for metals, got {:?}",
             labels
         );
@@ -253,11 +258,7 @@ mod tests {
 
     #[test]
     fn classifies_china_cpi_as_macro_not_overseas() {
-        let news = sample_news(
-            "中国CPI同比上涨0.3%",
-            "国家统计局公布5月通胀数据",
-            52042,
-        );
+        let news = sample_news("中国CPI同比上涨0.3%", "国家统计局公布5月通胀数据", 52042);
         let labels = classify(&news);
         assert!(
             labels.iter().any(|l| l.dimension_code == "macro"),
@@ -265,7 +266,9 @@ mod tests {
             labels
         );
         assert!(
-            !labels.iter().any(|l| l.dimension_code == "overseas_finance"),
+            !labels
+                .iter()
+                .any(|l| l.dimension_code == "overseas_finance"),
             "中国CPI should not be overseas_finance, got {:?}",
             labels
         );
@@ -285,7 +288,9 @@ mod tests {
             labels
         );
         assert!(
-            !labels.iter().any(|l| l.dimension_code == "overseas_finance"),
+            !labels
+                .iter()
+                .any(|l| l.dimension_code == "overseas_finance"),
             "LPR should not be overseas_finance, got {:?}",
             labels
         );

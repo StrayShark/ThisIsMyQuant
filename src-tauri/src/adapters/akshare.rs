@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde_json::Value;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{Contract, KLine, Tick, dt_to_iso, parse_dt};
+use crate::models::{dt_to_iso, parse_dt, Contract, KLine, Tick};
 
 const SINA_BASE: &str = "https://stock2.finance.sina.com.cn/futures/api/json.php";
 
@@ -72,12 +72,13 @@ impl AkshareClient {
 
     pub async fn fetch_latest_tick(&self, symbol: &str) -> AppResult<Option<Tick>> {
         let ak_sym = Self::akshare_symbol(symbol);
-        let url = format!(
-            "{SINA_BASE}/InnerFuturesNewService.getFewMinLine?symbol={ak_sym}&type=1"
-        );
+        let url =
+            format!("{SINA_BASE}/InnerFuturesNewService.getFewMinLine?symbol={ak_sym}&type=1");
         let resp = self.http.get(&url).send().await?;
         let rows: Vec<Value> = resp.json().await?;
-        let last = rows.last().ok_or_else(|| AppError::Msg("empty minute data".into()))?;
+        let last = rows
+            .last()
+            .ok_or_else(|| AppError::Msg("empty minute data".into()))?;
         let ts = parse_ts_field(last.get("d").and_then(|v| v.as_str()))?;
         let price = parse_f64(last.get("c"))?;
         let vol = parse_i64(last.get("v")).unwrap_or(1).max(1);
@@ -95,7 +96,7 @@ impl AkshareClient {
         }))
     }
 
-    /// 基本面快照：持仓来自 Tick；仓单/基差占位。
+    /// 基本面快照：持仓来自实时分钟线，昨收/成交量来自日线。
     pub async fn fetch_market_fundamentals(&self, symbol: &str) -> AppResult<Value> {
         use chrono::{Duration, Utc};
 
@@ -109,18 +110,24 @@ impl AkshareClient {
             .get_history(symbol, "1d", start, end)
             .await
             .unwrap_or_default();
-        let prev_close = klines.last().map(|k| k.close);
+        let prev_close = crate::services::prev_close_from_klines(&klines);
         let vol_1d = klines.last().map(|k| k.volume).unwrap_or(0);
+        let last_daily_close = klines.last().map(|k| k.close);
+        let last_daily_time = klines.last().map(|k| k.start_time.clone());
 
-        let basis = match (last, prev_close) {
+        let (basis_value, basis_pct, basis) = match (last, prev_close) {
             (Some(l), Some(p)) if p > 0.0 => {
                 let chg = l - p;
                 let pct = chg / p * 100.0;
-                Some(format!(
-                    "最新 {l:.1} vs 昨收 {p:.1}，变动 {chg:+.1}（{pct:+.2}%）"
-                ))
+                (
+                    Some(chg),
+                    Some(pct),
+                    Some(format!(
+                        "最新 {l:.1} vs 昨收 {p:.1}，变动 {chg:+.1}（{pct:+.2}%）"
+                    )),
+                )
             }
-            _ => None,
+            _ => (None, None, None),
         };
 
         let warehouse = if oi > 0 {
@@ -133,10 +140,21 @@ impl AkshareClient {
             "symbol": symbol.to_lowercase(),
             "source": "sina_poll+daily",
             "open_interest": oi,
+            "latest_price": last,
+            "prev_close": prev_close,
+            "last_daily_close": last_daily_close,
+            "last_daily_time": last_daily_time,
+            "basis_value": basis_value,
+            "basis_pct": basis_pct,
             "warehouse": warehouse,
             "basis": basis,
             "volume_1d": vol_1d,
-            "note": "持仓来自新浪 Tick；价差为最新价相对最近日 K 收盘的估算"
+            "quality": {
+                "open_interest": oi > 0,
+                "prev_close": prev_close.is_some(),
+                "volume": vol_1d > 0
+            },
+            "note": "持仓来自新浪分钟线；昨收/成交量来自日线；仓单与库存需后续接交易所/产业数据源"
         }))
     }
 
@@ -147,9 +165,7 @@ impl AkshareClient {
         start: DateTime<Utc>,
         end: DateTime<Utc>,
     ) -> AppResult<Vec<KLine>> {
-        let url = format!(
-            "{SINA_BASE}/IndexService.getInnerFuturesDailyKLine?symbol={ak_sym}"
-        );
+        let url = format!("{SINA_BASE}/IndexService.getInnerFuturesDailyKLine?symbol={ak_sym}");
         let resp = self.http.get(&url).send().await?;
         let rows: Vec<Vec<Value>> = resp.json().await.unwrap_or_default();
         let mut out = Vec::new();
@@ -242,9 +258,7 @@ fn parse_ts_field(raw: Option<&str>) -> AppResult<DateTime<Utc>> {
 
 fn parse_f64(v: Option<&Value>) -> AppResult<f64> {
     match v {
-        Some(Value::Number(n)) => n
-            .as_f64()
-            .ok_or_else(|| AppError::Msg("bad number".into())),
+        Some(Value::Number(n)) => n.as_f64().ok_or_else(|| AppError::Msg("bad number".into())),
         Some(Value::String(s)) => s
             .parse()
             .map_err(|_| AppError::Msg(format!("bad float: {s}"))),

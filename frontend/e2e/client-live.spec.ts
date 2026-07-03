@@ -12,6 +12,14 @@ interface E2eModuleResult {
 interface E2eSuiteReport {
   ok: boolean;
   symbol: string;
+  symbol_checks: Array<{
+    symbol: string;
+    sector: string;
+    bars: number;
+    context_bars: number;
+    ok: boolean;
+    message: string;
+  }>;
   modules: E2eModuleResult[];
   analyses: Array<{
     trigger: string;
@@ -36,7 +44,7 @@ test.describe("客户端 Live E2E", () => {
     const res = await fetch(`${E2E_HTTP}/e2e/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbol: "rb0" }),
+      body: JSON.stringify({ symbol: "rb0", symbols: ["rb0", "au0", "m0", "sc0", "ec0"] }),
     });
     expect(res.ok).toBeTruthy();
 
@@ -44,6 +52,19 @@ test.describe("客户端 Live E2E", () => {
     console.log("[e2e-client] suite report:", JSON.stringify(report, null, 2));
 
     expect(report.symbol).toBe("rb0");
+    expect(report.symbol_checks).toHaveLength(5);
+    expect(report.symbol_checks.map((s) => s.sector)).toEqual([
+      "黑色建材",
+      "有色贵金属",
+      "农产品软商品",
+      "能源化工",
+      "航运运价",
+    ]);
+    for (const check of report.symbol_checks) {
+      expect(check.ok, `${check.symbol}: ${check.message}`).toBeTruthy();
+      expect(check.bars, `${check.symbol} bars`).toBeGreaterThan(0);
+      expect(check.context_bars, `${check.symbol} context`).toBeGreaterThan(0);
+    }
     expect(report.modules.length).toBeGreaterThanOrEqual(8);
 
     const required = [
@@ -52,6 +73,9 @@ test.describe("客户端 Live E2E", () => {
       "dimensions",
       "sectors",
       "analysis_context",
+      "fundamentals",
+      "overseas_symbols",
+      "professional_dashboard",
       "reports_db",
       "analysis_tomorrow",
       "analysis_short_term",

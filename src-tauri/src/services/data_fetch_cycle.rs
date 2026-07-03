@@ -1,4 +1,4 @@
-//! 定时数据拉取：财经日历、资讯、watchlist K 线增量。
+//! 定时数据拉取：财经日历、资讯、core 品种 K 线增量。
 
 use std::sync::Arc;
 
@@ -13,11 +13,10 @@ pub const SCHEDULED_CALENDAR_CACHE_KEY: &str = "scheduled|calendar|14d|star3";
 
 pub async fn run_data_fetch_cycle(state: &Arc<AppState>) -> Result<DataFetchSummary, String> {
     let mut summary = DataFetchSummary::default();
-    let (jinshi_enabled, watchlist, news_classify, default_llm) = {
+    let (jinshi_enabled, news_classify, default_llm) = {
         let cfg = state.config();
         (
             cfg.jinshi_enabled,
-            cfg.watchlist.clone(),
             cfg.news_classify.clone(),
             cfg.default_llm_provider.clone(),
         )
@@ -52,7 +51,7 @@ pub async fn run_data_fetch_cycle(state: &Arc<AppState>) -> Result<DataFetchSumm
         if jinshi.is_connected() {
             let llm_snap = state.llm_snapshot();
             let deps = IngestDeps {
-                jinshi: &*jinshi,
+                jinshi: &jinshi,
                 db: &state.db,
                 llm: Some(&llm_snap),
                 classify_cfg: &news_classify,
@@ -68,15 +67,12 @@ pub async fn run_data_fetch_cycle(state: &Arc<AppState>) -> Result<DataFetchSumm
         }
     }
 
-    if state.akshare_ready && !watchlist.is_empty() {
+    let symbols = crate::engine::sectors::core_product_symbols();
+    if state.akshare_ready && !symbols.is_empty() {
         let end = Utc::now();
         let start = end - Duration::days(10);
-        for sym in &watchlist {
-            match state
-                .akshare
-                .get_history(sym, "1d", start, end)
-                .await
-            {
+        for sym in &symbols {
+            match state.akshare.get_history(sym, "1d", start, end).await {
                 Ok(klines) if !klines.is_empty() => {
                     let _ = state.db.save_klines(&klines);
                     summary.klines_symbols += 1;

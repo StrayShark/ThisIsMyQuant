@@ -88,7 +88,11 @@ fn macd(data: &[f64]) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
         .map(|(f, s)| f - s)
         .collect();
     let dea = ema(&dif, 9);
-    let hist: Vec<f64> = dif.iter().zip(dea.iter()).map(|(d, e)| 2.0 * (d - e)).collect();
+    let hist: Vec<f64> = dif
+        .iter()
+        .zip(dea.iter())
+        .map(|(d, e)| 2.0 * (d - e))
+        .collect();
     (dif, dea, hist)
 }
 

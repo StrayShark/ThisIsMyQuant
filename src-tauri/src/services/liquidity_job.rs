@@ -40,11 +40,7 @@ async fn refresh_all(state: &AppState) -> AppResult<()> {
             .unwrap_or_default();
 
         if klines.is_empty() {
-            if let Ok(fetched) = state
-                .akshare
-                .get_history(&sym, "1d", start, end)
-                .await
-            {
+            if let Ok(fetched) = state.akshare.get_history(&sym, "1d", start, end).await {
                 klines = fetched;
                 if !klines.is_empty() {
                     let _ = state.db.save_klines(&klines);
@@ -52,12 +48,7 @@ async fn refresh_all(state: &AppState) -> AppResult<()> {
             }
         }
 
-        let snap = liquidity::build_snapshot(
-            &product.symbol,
-            &klines,
-            product.default_tier,
-            &cfg,
-        );
+        let snap = liquidity::build_snapshot(&product.symbol, &klines, product.default_tier, &cfg);
         state.db.save_liquidity_snapshot(&snap)?;
         updated += 1;
     }

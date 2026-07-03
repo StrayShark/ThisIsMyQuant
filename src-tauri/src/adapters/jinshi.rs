@@ -8,8 +8,8 @@ use serde_json::Value;
 
 use crate::adapters::jinshi_calendar::{fetch_calendar_range, CalendarFetchOptions};
 use crate::config::Config;
-use crate::error::AppResult;
 use crate::engine::sectors::{get_sector_by_symbol, normalize_product};
+use crate::error::AppResult;
 use crate::models::{CalendarEvent, NewsItem};
 
 const DEFAULT_HEADERS: [(&str, &str); 3] = [
@@ -24,6 +24,9 @@ struct CalendarMeta {
     event_count: u32,
 }
 
+type NewsCache = HashMap<i64, (f64, Vec<NewsItem>)>;
+type CalendarCache = HashMap<String, (f64, Vec<CalendarEvent>)>;
+
 #[derive(Clone)]
 pub struct JinshiClient {
     http: Client,
@@ -32,8 +35,8 @@ pub struct JinshiClient {
     enabled: bool,
     cache_ttl: f64,
     connected: bool,
-    cache: std::sync::Arc<Mutex<HashMap<i64, (f64, Vec<NewsItem>)>>>,
-    calendar_cache: std::sync::Arc<Mutex<HashMap<String, (f64, Vec<CalendarEvent>)>>>,
+    cache: std::sync::Arc<Mutex<NewsCache>>,
+    calendar_cache: std::sync::Arc<Mutex<CalendarCache>>,
     calendar_meta: std::sync::Arc<Mutex<CalendarMeta>>,
 }
 
@@ -151,10 +154,7 @@ impl JinshiClient {
         if !self.enabled {
             return Ok(vec![]);
         }
-        let cache_key = format!(
-            "{start}|{end}|{min_star}|{}",
-            country.unwrap_or("*")
-        );
+        let cache_key = format!("{start}|{end}|{min_star}|{}", country.unwrap_or("*"));
         let now = now_secs();
         if let Ok(cache) = self.calendar_cache.lock() {
             if let Some((ts, items)) = cache.get(&cache_key) {
@@ -222,7 +222,9 @@ impl JinshiClient {
             .map(|arr| {
                 arr.iter()
                     .map(|raw| parse_item(raw, category_id))
-                    .filter(|i| !i.title.is_empty() && (!i.summary.is_empty() || !i.title.is_empty()))
+                    .filter(|i| {
+                        !i.title.is_empty() && (!i.summary.is_empty() || !i.title.is_empty())
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -265,7 +267,12 @@ fn parse_item(raw: &Value, category_id: i64) -> NewsItem {
     if desc.is_empty() && !bullet_list.is_empty() {
         desc = bullet_list[0].clone();
     } else if !bullet_list.is_empty() && desc.len() < 80 {
-        desc = bullet_list.iter().take(3).cloned().collect::<Vec<_>>().join("；");
+        desc = bullet_list
+            .iter()
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("；");
     }
     let url = data
         .and_then(|d| d.get("url"))

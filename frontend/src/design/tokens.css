@@ -1,45 +1,8 @@
 :root {
-  /* Vercel 深色仪表盘 — 参考 vercel.com/dashboard */
-  --color-canvas: #000000;
-  --color-canvas-soft: #0a0a0a;
-  --color-surface-card: #0a0a0a;
-  --color-surface-elevated: #171717;
-  --color-surface-strong: #262626;
-
-  --color-hairline: #333333;
-  --color-hairline-soft: #262626;
-  --color-hairline-strong: #404040;
-
-  --color-ink: #ededed;
-  --color-body: #a1a1a1;
-  --color-body-strong: #ededed;
-  --color-muted: #888888;
-  --color-muted-soft: #666666;
-  --color-on-primary: #ffffff;
-
-  /* Vercel 链接蓝 */
-  --color-primary: #0070f3;
-  --color-primary-active: #0761d1;
-  --color-link: #0070f3;
-  --color-link-bg-soft: #0d2847;
-
-  /* 语义 */
-  --color-semantic-success: #50e3c2;
-  --color-semantic-error: #ee0000;
-  --color-up: #50e3c2;
-  --color-up-bg: #0d3329;
-  --color-down: #ee0000;
-  --color-down-bg: #3d0a0a;
   --color-flat: #888888;
   --color-pill-fg: #171717;
   --color-pill-fg-inverse: #ffffff;
-
-  /* AI 分析时间线（产品签名，保留柔和色） */
-  --color-timeline-thinking: #dfa88f;
-  --color-timeline-grep: #9fc9a2;
-  --color-timeline-read: #9fbbe0;
-  --color-timeline-edit: #c0a8dd;
-  --color-timeline-done: #c08532;
+  --color-on-primary: #ffffff;
 
   --radius-xs: 4px;
   --radius-sm: 6px;
@@ -61,25 +24,62 @@
   --font-sans: "Geist Variable", "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "Geist Mono Variable", "JetBrains Mono", ui-monospace, monospace;
 
-  /* shadcn HSL 语义层 */
-  --background: 0 0% 0%;
-  --foreground: 0 0% 93%;
-  --card: 0 0% 4%;
-  --card-foreground: 0 0% 93%;
-  --popover: 0 0% 4%;
-  --popover-foreground: 0 0% 93%;
-  --primary: 211 100% 48%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 0 0% 9%;
-  --secondary-foreground: 0 0% 93%;
-  --muted: 0 0% 9%;
-  --muted-foreground: 0 0% 53%;
-  --accent: 0 0% 9%;
-  --accent-foreground: 0 0% 93%;
-  --destructive: 0 100% 47%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 0 0% 20%;
-  --input: 0 0% 20%;
-  --ring: 211 100% 48%;
   --radius: 0.5rem;
+
+  /* 行情可视化固定涨跌色 — 仅此处定义，主题/quote-scheme 不得覆盖 */
+  --market-up: #50e3c2;
+  --market-down: #ee0000;
+  --market-up-bg: #0d3329;
+  --market-down-bg: #3d0a0a;
+
+  /* UI 文案/徽章涨跌色默认回退（主题会覆盖） */
+  --color-up: #50e3c2;
+  --color-up-bg: #0d3329;
+  --color-down: #ee0000;
+  --color-down-bg: #3d0a0a;
+
+  /* 图表与指标专用 token */
+  --chart-crosshair: rgba(136, 136, 136, 0.5);
+  --chart-crosshair-label-bg: #262626;
+  --chart-separator-hover: rgba(136, 136, 136, 0.35);
+
+  --indicator-ma5: #0070f3;
+  --indicator-ma20: #f5a623;
+  --indicator-ma60: #7928ca;
+  --indicator-ema12: #00bcd4;
+  --indicator-ema26: #009688;
+  --indicator-boll-upper: #666666;
+  --indicator-boll-mid: #888888;
+  --indicator-boll-lower: #666666;
+  --indicator-sar: #e91e63;
+  --indicator-macd-dif: #2962ff;
+  --indicator-macd-dea: #ff6d00;
+  --indicator-rsi: #7e57c2;
+  --indicator-kdj-k: #2962ff;
+  --indicator-kdj-d: #ff6d00;
+  --indicator-kdj-j: #ab47bc;
+
+  --selection-bg: rgba(0, 112, 243, 0.35);
+}
+
+/* 红涨绿跌（A 股）— 各主题通用 */
+[data-quote-scheme="red_up"] {
+  --color-up: #ee0000;
+  --color-up-bg: #3d0a0a;
+  --color-down: #50e3c2;
+  --color-down-bg: #0d3329;
+}
+
+[data-theme="cursor"][data-quote-scheme="red_up"] {
+  --color-up: #e8e8e8;
+  --color-up-bg: #252525;
+  --color-down: #6b6b6b;
+  --color-down-bg: #161616;
+}
+
+[data-theme="matrix"][data-quote-scheme="red_up"] {
+  --color-up: #ff5555;
+  --color-up-bg: #2e0a0a;
+  --color-down: #39ff14;
+  --color-down-bg: #0a2e0a;
 }

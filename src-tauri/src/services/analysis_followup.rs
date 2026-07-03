@@ -42,11 +42,7 @@ pub async fn run_followup(
     } else {
         state
             .db
-            .get_news_for_symbol(
-                &report.symbol.to_uppercase(),
-                None,
-                10,
-            )
+            .get_news_for_symbol(&report.symbol.to_uppercase(), None, 10)
             .unwrap_or_default()
     };
 
@@ -54,21 +50,12 @@ pub async fn run_followup(
     let mut answer = String::new();
 
     let llm = state.llm_snapshot();
-    llm
-        .stream(
-            &prompt,
-            FOLLOWUP_SYSTEM_PROMPT,
-            provider,
-            |token| {
-                answer.push_str(&token);
-                let _ = app.emit(
-                    "followup-delta",
-                    FollowupDeltaEvent { text: token },
-                );
-            },
-        )
-        .await
-        .map_err(|e| e.to_string())?;
+    llm.stream(&prompt, FOLLOWUP_SYSTEM_PROMPT, provider, |token| {
+        answer.push_str(&token);
+        let _ = app.emit("followup-delta", FollowupDeltaEvent { text: token });
+    })
+    .await
+    .map_err(|e| e.to_string())?;
 
     let provider_name = provider
         .map(String::from)

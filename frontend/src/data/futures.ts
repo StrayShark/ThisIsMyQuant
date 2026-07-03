@@ -2,7 +2,16 @@
 import type { FuturesProduct, FuturesSector, LiquidityTier } from "@/types";
 import { api } from "@/api/client";
 
-/** E2E / 离线静态目录（32 core + 无 watch） */
+/** E2E / 离线静态目录（五大板块、27 个 v1 core） */
+/** 与 Rust sectors.rs / 品种页一致的板块顺序 */
+export const FUTURES_SECTOR_ORDER = [
+  "black",
+  "metals",
+  "agriculture",
+  "energy_chemical",
+  "shipping",
+] as const;
+
 export const STATIC_FUTURES_CATALOG: FuturesSector[] = [
   {
     code: "black",
@@ -63,19 +72,6 @@ export const STATIC_FUTURES_CATALOG: FuturesSector[] = [
     name: "航运运价",
     description: "集运指数及航运链。",
     products: [p("ec", "EC0", "集运欧线", "INE")],
-  },
-  {
-    code: "financial",
-    name: "金融期货",
-    description: "股指和国债期货。",
-    products: [
-      p("if", "IF0", "沪深300股指", "CFFEX"),
-      p("ih", "IH0", "上证50股指", "CFFEX"),
-      p("ic", "IC0", "中证500股指", "CFFEX"),
-      p("im", "IM0", "中证1000股指", "CFFEX"),
-      p("t", "T0", "10年期国债", "CFFEX"),
-      p("tl", "TL0", "30年期国债", "CFFEX"),
-    ],
   },
 ];
 

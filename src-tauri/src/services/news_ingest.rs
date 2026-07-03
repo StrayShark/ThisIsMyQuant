@@ -5,7 +5,7 @@ use crate::config::NewsClassifyConfig;
 use crate::db::Database;
 use crate::engine::{news_classifier, news_llm_classifier, sectors};
 use crate::error::AppResult;
-use crate::models::{NewsItem, NewsRecord, news_content_hash};
+use crate::models::{news_content_hash, NewsItem, NewsRecord};
 
 pub struct IngestDeps<'a> {
     pub jinshi: &'a JinshiClient,
@@ -15,7 +15,10 @@ pub struct IngestDeps<'a> {
     pub default_llm_provider: &'a str,
 }
 
-pub async fn ingest_poll(deps: &IngestDeps<'_>, limit_per_category: usize) -> AppResult<(usize, usize)> {
+pub async fn ingest_poll(
+    deps: &IngestDeps<'_>,
+    limit_per_category: usize,
+) -> AppResult<(usize, usize)> {
     if !deps.jinshi.is_connected() {
         return Ok((0, 0));
     }
@@ -42,7 +45,9 @@ pub async fn ingest_poll(deps: &IngestDeps<'_>, limit_per_category: usize) -> Ap
     new_labels += llm_labels;
 
     if new_items > 0 || llm_labels > 0 {
-        log::info!("news ingest: {new_items} new, {new_labels} classifications (incl. LLM {llm_labels})");
+        log::info!(
+            "news ingest: {new_items} new, {new_labels} classifications (incl. LLM {llm_labels})"
+        );
     }
     Ok((new_items, new_labels))
 }
@@ -58,7 +63,7 @@ async fn classify_pending_with_llm(deps: &IngestDeps<'_>) -> AppResult<usize> {
         return Ok(0);
     }
 
-    let batch = deps.classify_cfg.batch_size.max(1).min(20);
+    let batch = deps.classify_cfg.batch_size.clamp(1, 20);
     let pending = deps.db.get_unclassified_news(batch as i64)?;
     if pending.is_empty() {
         return Ok(0);
@@ -67,7 +72,10 @@ async fn classify_pending_with_llm(deps: &IngestDeps<'_>) -> AppResult<usize> {
     let provider = classify_provider(deps);
     let labels = news_llm_classifier::classify_batch(llm, provider, &pending).await?;
     if labels.is_empty() {
-        log::debug!("LLM classify returned no labels for {} items", pending.len());
+        log::debug!(
+            "LLM classify returned no labels for {} items",
+            pending.len()
+        );
         return Ok(0);
     }
     let merged: Vec<_> = pending

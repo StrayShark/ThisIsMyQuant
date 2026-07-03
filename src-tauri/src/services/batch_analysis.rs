@@ -12,11 +12,17 @@ pub struct BatchAnalysisHandle {
     status: Arc<Mutex<BatchJobStatus>>,
 }
 
-impl BatchAnalysisHandle {
-    pub fn new() -> Self {
+impl Default for BatchAnalysisHandle {
+    fn default() -> Self {
         Self {
             status: Arc::new(Mutex::new(BatchJobStatus::default())),
         }
+    }
+}
+
+impl BatchAnalysisHandle {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub async fn get_status(&self) -> BatchJobStatus {

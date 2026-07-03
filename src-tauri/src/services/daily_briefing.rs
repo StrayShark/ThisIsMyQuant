@@ -1,4 +1,4 @@
-//! 每日收盘简报：在配置的小时点对 watchlist 跑「明日展望」分析。
+//! 每日收盘简报：在配置的小时点对全部 core 品种跑「明日展望」分析。
 
 use std::sync::Arc;
 
@@ -14,16 +14,15 @@ pub fn spawn_daily_briefing(app: AppHandle, state: Arc<AppState>, status: Schedu
         let mut last_run_ordinal: Option<u32> = None;
         loop {
             sleep(Duration::from_secs(60)).await;
-            let (enabled, hour, watchlist_empty, has_llm) = {
+            let (enabled, hour, has_llm) = {
                 let cfg = state.config();
                 (
                     cfg.daily_briefing_enabled,
                     cfg.daily_briefing_hour,
-                    cfg.watchlist.is_empty(),
                     !state.llm_snapshot().available_providers().is_empty(),
                 )
             };
-            if !enabled || watchlist_empty || !has_llm {
+            if !enabled || !has_llm {
                 continue;
             }
             let now = Local::now();

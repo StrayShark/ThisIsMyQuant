@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
-import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,15 +24,11 @@ export function StatusPage() {
   return (
     <div className="page-scroll">
       <div className="page-inner">
-        <PageHeader
-          title="系统状态"
-          description="LLM、行情轮询与扩展数据源状态一览"
-          action={
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
-              刷新
-            </Button>
-          }
-        />
+        <div className="mb-4 flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            刷新
+          </Button>
+        </div>
 
         {isLoading ? (
           <Skeleton className="h-64 rounded-lg" />
@@ -61,6 +56,23 @@ export function StatusPage() {
                 <p>
                   行情源：
                   <span className="font-mono">{data.runtime.feed_source ?? "—"}</span>
+                </p>
+                <p>
+                  报价缓存：
+                  <span className="font-mono">
+                    {data.quote_status.quote_count} 个
+                    {data.quote_status.stale_count > 0
+                      ? ` · ${data.quote_status.stale_count} 个过期`
+                      : " · 新鲜"}
+                  </span>
+                </p>
+                <p>
+                  最大延迟：
+                  <span className="font-mono">
+                    {data.quote_status.max_age_secs != null
+                      ? `${data.quote_status.max_age_secs}s`
+                      : "—"}
+                  </span>
                 </p>
                 <p>
                   定时：每 {data.runtime.schedule.interval_hours}h
@@ -97,8 +109,17 @@ export function StatusPage() {
                   <p className="text-xs text-muted-foreground">QuestDB 未配置（可选）</p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  {(data.overseas_stub.message as string) ?? "海外期货 stub"}
+                  {(data.overseas.message as string) ?? "海外期货参考源"}
                 </p>
+                {Array.isArray(data.overseas.symbols) && data.overseas.symbols.length > 0 && (
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {data.overseas.symbols
+                      .slice(0, 6)
+                      .map((s) => (typeof s === "object" && s ? (s as { symbol?: string }).symbol : null))
+                      .filter(Boolean)
+                      .join(" / ")}
+                  </p>
+                )}
               </CardContent>
             </Card>
 

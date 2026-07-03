@@ -5,8 +5,10 @@ import { AppShell } from "@/components/AppShell";
 import { BootstrapLoader } from "@/components/BootstrapLoader";
 import { useMarketStatus } from "@/hooks/useMarketStatus";
 import { useAppBootstrap } from "@/hooks/useAppBootstrap";
+import { useAppearance } from "@/hooks/useAppearance";
 import { useNotifications } from "@/hooks/useNotifications";
 import { api } from "@/api/client";
+import { OverviewPage } from "@/pages/OverviewPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ReportsPage } from "@/pages/ReportsPage";
 import { ReportDetailPage } from "@/pages/ReportDetailPage";
@@ -30,12 +32,14 @@ const queryClient = new QueryClient({
 function MainAppRoutes() {
   useMarketStatus();
   useAppBootstrap();
+  useAppearance();
   useNotifications();
 
   return (
     <AppShell>
       <Routes>
-        <Route path="/" element={<DashboardPage />} />
+        <Route path="/" element={<OverviewPage />} />
+        <Route path="/workspace" element={<DashboardPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/reports/compare" element={<ReportComparePage />} />
         <Route path="/reports/:id" element={<ReportDetailPage />} />

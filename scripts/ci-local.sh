@@ -17,14 +17,26 @@ for f in frontend/src/data/futures.ts frontend/src/data/dimensions.ts; do
   fi
 done
 
+echo "==> cargo fmt check"
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
+echo "==> cargo clippy"
+cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
 echo "==> cargo test (lib)"
 cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+echo "==> frontend install"
+pnpm --dir frontend install --frozen-lockfile
 
 echo "==> frontend typecheck (tsc -b，与 build 一致)"
 pnpm --dir frontend exec tsc -b
 
 echo "==> frontend lint"
 pnpm --dir frontend run lint
+
+echo "==> frontend unit tests"
+pnpm --dir frontend run test
 
 echo "==> frontend build"
 pnpm --dir frontend run build

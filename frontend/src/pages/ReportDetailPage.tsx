@@ -2,7 +2,6 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { api } from "@/api/client";
-import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DimensionSummary } from "@/features/analysis/DimensionSummary";
 import { triggerLabel } from "@/data/calendar";
 import { dimensionLabel } from "@/data/dimensions";
-import { getFuturesProduct } from "@/data/futures";
+import { reportDisplayContent } from "@/features/analysis/report-text";
 
 export function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -35,8 +34,6 @@ export function ReportDetailPage() {
     enabled: Boolean(report?.news_ids?.length),
   });
 
-  const product = report ? getFuturesProduct(report.symbol) : undefined;
-
   return (
     <div className="page-scroll">
       <div className="page-inner max-w-3xl">
@@ -50,16 +47,15 @@ export function ReportDetailPage() {
         {isLoading ? (
           <Skeleton className="h-64 rounded-lg" />
         ) : error || !report ? (
-          <PageHeader title="报告不存在" description="该报告可能已被删除或 ID 无效。" />
+          <p className="text-sm text-muted-foreground">报告不存在</p>
         ) : (
           <>
-            <PageHeader
-              title={product?.name ? `${product.name} 分析报告` : `${report.symbol} 分析报告`}
-              description={new Date(report.created_at).toLocaleString("zh-CN")}
-            />
             <Card>
               <CardHeader className="flex-row flex-wrap items-center gap-2 space-y-0 pb-2">
                 <CardTitle className="text-sm font-semibold">报告正文</CardTitle>
+                <Badge variant="outline" className="font-mono text-xs">
+                  {new Date(report.created_at).toLocaleString("zh-CN")}
+                </Badge>
                 <Badge variant="secondary">{triggerLabel(report.trigger)}</Badge>
                 <Badge variant="outline" className="font-mono">
                   {report.provider}
@@ -84,7 +80,7 @@ export function ReportDetailPage() {
                   </div>
                 )}
                 <article className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                  {report.content}
+                  {reportDisplayContent(report.content)}
                 </article>
               </CardContent>
             </Card>
@@ -153,7 +149,7 @@ export function ReportDetailPage() {
               variant="outline"
               className="mt-6"
               onClick={() => {
-                navigate("/");
+                navigate("/workspace");
               }}
             >
               在行情页查看该品种

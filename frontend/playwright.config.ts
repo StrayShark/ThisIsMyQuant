@@ -22,9 +22,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm dev",
+    command: "node ./node_modules/vite/bin/vite.js",
     url: "http://localhost:5173",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === "true",
     env: {
       VITE_E2E_MOCK: "true",
     },

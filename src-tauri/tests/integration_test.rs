@@ -1,21 +1,18 @@
 //! Rust 后端集成测试（真实网络 + 本地 DB），评估 Command 层完成度。
 
 use app_lib::adapters::{AkshareClient, JinshiClient};
-use app_lib::testing::bootstrap_test_state;
 use app_lib::config::Config;
 use app_lib::db::Database;
+use app_lib::engine::facts_from_dimension_summary;
 use app_lib::engine::indicator;
 use app_lib::engine::sectors;
-use app_lib::engine::facts_from_dimension_summary;
 use app_lib::models::{AnalysisReport, FollowupMessage, KLine};
+use app_lib::testing::bootstrap_test_state;
 use chrono::{Duration, Utc};
 use reqwest::Client;
 
 fn temp_db() -> Database {
-    let path = std::env::temp_dir().join(format!(
-        "thisismyquant-test-{}.db",
-        uuid::Uuid::new_v4()
-    ));
+    let path = std::env::temp_dir().join(format!("thisismyquant-test-{}.db", uuid::Uuid::new_v4()));
     let db = Database::open(&path).expect("open temp db");
     db.init_schema().expect("schema");
     db
@@ -68,13 +65,17 @@ async fn product_catalog_core_filter() {
 
     let catalog = sectors::build_catalog("core", &HashMap::new());
     let count: usize = catalog.iter().map(|s| s.products.len()).sum();
-    assert!(count >= 32, "core catalog should have 32+ products, got {count}");
+    assert_eq!(
+        count, 27,
+        "core catalog should have 27 v1 products, got {count}"
+    );
     assert!(catalog.iter().any(|s| s.code == "shipping"));
+    assert!(!catalog.iter().any(|s| s.code == "financial"));
 }
 
 #[tokio::test]
 async fn unclassified_news_query() {
-    use app_lib::models::{NewsRecord, news_content_hash};
+    use app_lib::models::{news_content_hash, NewsRecord};
 
     let db = temp_db();
     let hash = news_content_hash("未分类新闻", "测试");
@@ -98,7 +99,7 @@ async fn unclassified_news_query() {
 #[tokio::test]
 async fn news_ingest_and_classify_roundtrip() {
     use app_lib::engine::news_classifier;
-    use app_lib::models::{NewsRecord, news_content_hash};
+    use app_lib::models::{news_content_hash, NewsRecord};
 
     let db = temp_db();
     let hash = news_content_hash("螺纹钢库存下降", "社会库存环比减少");
@@ -120,13 +121,20 @@ async fn news_ingest_and_classify_roundtrip() {
 
     let items = db.get_news_for_symbol("RB0", None, 10).expect("query");
     assert!(!items.is_empty());
-    assert!(items[0].classifications.iter().any(|c| c.dimension_code == "inventory"));
+    assert!(items[0]
+        .classifications
+        .iter()
+        .any(|c| c.dimension_code == "inventory"));
 }
 
 #[tokio::test]
 async fn contracts_from_sectors() {
     let contracts = sectors::all_contracts();
-    assert!(contracts.len() >= 30, "expected 30+ products, got {}", contracts.len());
+    assert!(
+        contracts.len() >= 30,
+        "expected 30+ products, got {}",
+        contracts.len()
+    );
     assert!(contracts.iter().any(|c| c.symbol == "RB0"));
 }
 
@@ -182,13 +190,19 @@ async fn akshare_daily_kline_live() {
     let end = Utc::now();
     let start = end - Duration::days(120);
     let klines = client
-        .get_history("rb2510", "1d", start, end)
+        .get_history("RB0", "1d", start, end)
         .await
         .expect("daily klines");
-    assert!(!klines.is_empty(), "expected daily klines (incl. 60m supplement)");
+    assert!(
+        !klines.is_empty(),
+        "expected daily klines (incl. 60m supplement)"
+    );
     assert!(klines.last().unwrap().close > 0.0);
     if let Some(latest) = app_lib::engine::kline_agg::latest_bar_time(&klines) {
-        assert!((end - latest).num_days() <= 14, "daily should include recent bars");
+        assert!(
+            (end - latest).num_days() <= 14,
+            "daily should include recent bars"
+        );
     }
 }
 
@@ -202,7 +216,7 @@ async fn akshare_minute_kline_live() {
     let end = Utc::now();
     let start = end - Duration::days(3);
     let klines = client
-        .get_history("rb2510", "1m", start, end)
+        .get_history("RB0", "1m", start, end)
         .await
         .expect("minute klines");
     assert!(!klines.is_empty(), "expected minute klines from Sina");
@@ -216,7 +230,7 @@ async fn akshare_latest_tick_live() {
         .unwrap();
     let client = AkshareClient::new(http);
     let tick = client
-        .fetch_latest_tick("rb2510")
+        .fetch_latest_tick("RB0")
         .await
         .expect("tick fetch")
         .expect("tick data");
@@ -235,7 +249,7 @@ async fn jinshi_news_live() {
     let mut client = JinshiClient::new(http, &config);
     client.connect().await.expect("jinshi connect");
     assert!(client.is_connected(), "jinshi should connect");
-    let _news = client.fetch_for_symbol("rb2510", 3).await.expect("news");
+    let _news = client.fetch_for_symbol("RB0", 3).await.expect("news");
 }
 
 #[tokio::test]
@@ -270,7 +284,11 @@ async fn jinshi_calendar_live() {
                 events.iter().any(|e| !e.country.is_empty()),
                 "MCP events should have country parsed from title"
             );
-            eprintln!("calendar live: {} events, sample={}", events.len(), events[0].name);
+            eprintln!(
+                "calendar live: {} events, sample={}",
+                events.len(),
+                events[0].name
+            );
         }
         Ok(_) => eprintln!("SKIP: calendar empty (rili API may be unavailable)"),
         Err(e) => eprintln!("SKIP: calendar fetch failed: {e}"),

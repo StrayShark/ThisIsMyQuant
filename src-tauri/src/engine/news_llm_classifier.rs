@@ -84,7 +84,10 @@ fn dimension_legend() -> String {
 fn parse_llm_response(raw: &str, records: &[NewsRecord]) -> Vec<NewsClassification> {
     let json_str = extract_json_object(raw);
     let Ok(parsed) = serde_json::from_str::<Value>(&json_str) else {
-        log::warn!("LLM classify: invalid JSON: {}", raw.chars().take(200).collect::<String>());
+        log::warn!(
+            "LLM classify: invalid JSON: {}",
+            raw.chars().take(200).collect::<String>()
+        );
         return vec![];
     };
 
@@ -150,11 +153,7 @@ fn is_valid_label(symbol: &str, dimension: &str) -> bool {
     }
     let sector = sectors::get_sector_by_symbol(symbol);
     sector
-        .map(|s| {
-            sector_dimension_codes(&s.code)
-                .iter()
-                .any(|d| *d == dimension)
-        })
+        .map(|s| sector_dimension_codes(&s.code).contains(&dimension))
         .unwrap_or(false)
 }
 

@@ -1,5 +1,7 @@
 /** K 线用户配置（TradingView 风格默认值 + localStorage 持久化）。 */
 
+import { withMarketCandleColors } from "@/lib/market-colors";
+
 export type CrosshairModeSetting = "magnet" | "normal";
 export type PriceScaleModeSetting = "normal" | "logarithmic";
 
@@ -43,7 +45,7 @@ export interface ChartUserConfig {
 
 const STORAGE_KEY = "thisismyquant-chart-config";
 
-/** TradingView 深色默认近似 + 本项目 token 涨跌色 */
+/** TradingView 深色默认 + 固定 market 涨跌色 */
 export function defaultChartConfigFromTheme(theme: {
   background: string;
   textColor: string;
@@ -52,7 +54,7 @@ export function defaultChartConfigFromTheme(theme: {
   upColor: string;
   downColor: string;
 }): ChartUserConfig {
-  return {
+  return withMarketCandleColors({
     mainPaneStretch: 3,
     volumePaneStretch: 1,
     showVolume: true,
@@ -87,23 +89,23 @@ export function defaultChartConfigFromTheme(theme: {
     scrollEnabled: true,
     scaleEnabled: true,
     kineticScroll: true,
-  };
+  });
 }
 
 export function loadChartConfig(fallback: ChartUserConfig): ChartUserConfig {
-  if (typeof localStorage === "undefined") return fallback;
+  if (typeof localStorage === "undefined") return withMarketCandleColors(fallback);
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return fallback;
-    return { ...fallback, ...JSON.parse(raw) };
+    if (!raw) return withMarketCandleColors(fallback);
+    return withMarketCandleColors({ ...fallback, ...JSON.parse(raw) });
   } catch {
-    return fallback;
+    return withMarketCandleColors(fallback);
   }
 }
 
 export function saveChartConfig(config: ChartUserConfig): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(withMarketCandleColors(config)));
   } catch {
     /* ignore quota */
   }

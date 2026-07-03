@@ -159,7 +159,6 @@ export interface FollowupMessage {
 
 /** 应用内可持久化配置（非 .env 密钥项） */
 export interface UserPreferences {
-  watchlist: string[];
   schedule_enabled: boolean;
   schedule_interval_hours: number;
   schedule_analysis_trigger: string;
@@ -184,6 +183,10 @@ export interface UserPreferences {
   retention_days_ticks: number;
   calendar_reminder_enabled: boolean;
   calendar_reminder_mins: number;
+  /** green_up=绿涨红跌，red_up=红涨绿跌 */
+  quote_color_scheme: "green_up" | "red_up";
+  /** dark | light | system | cursor | matrix */
+  theme: "dark" | "light" | "system" | "cursor" | "matrix";
 }
 
 export interface LlmProviderSetup {
@@ -216,7 +219,7 @@ export interface AppSettings {
   akshare_enabled: boolean;
   akshare_realtime_enabled: boolean;
   realtime_poll_interval: number;
-  watchlist: string[];
+  core_product_count: number;
   jinshi_enabled: boolean;
   jinshi_poll_interval: number;
   default_llm_provider: string;
@@ -228,6 +231,7 @@ export interface AppSettings {
   schedule_enabled: boolean;
   scheduler_running: boolean;
   database_path: string;
+  preferences_path?: string;
   news_classify_enabled: boolean;
   news_classify_batch: number;
   market_feed?: string;
@@ -259,11 +263,18 @@ export interface BatchJobStatus {
 
 export interface StatusDashboard {
   runtime: RuntimeStatus;
+  quote_status: {
+    quote_count: number;
+    stale_count: number;
+    stale_after_secs: number;
+    newest_timestamp?: string | null;
+    max_age_secs?: number | null;
+  };
   llm_health: Record<string, boolean>;
   llm_last_errors: Record<string, string>;
   questdb_configured: boolean;
   questdb_online: boolean;
-  overseas_stub: Record<string, unknown>;
+  overseas: Record<string, unknown>;
   batch_job: BatchJobStatus;
   prompt_version: string;
 }
@@ -307,6 +318,75 @@ export interface RuntimeStatus {
   schedule: ScheduleStatus;
 }
 
+export interface DecisionFlowItem {
+  id: string;
+  title: string;
+  summary: string;
+  source: string;
+  display_time: string;
+  symbol?: string | null;
+  product_name?: string | null;
+  sector?: string | null;
+  dimension_code?: string | null;
+  dimension_label?: string | null;
+  impact: "bullish" | "bearish" | "neutral" | string;
+  confidence: number;
+}
+
+export interface FactorSignal {
+  label: string;
+  value: string;
+  signal: string;
+  detail: string;
+}
+
+export interface FactorSnapshot {
+  sector: string;
+  symbol: string;
+  product_name: string;
+  updated_at: string;
+  quality: string;
+  signals: FactorSignal[];
+}
+
+export interface AlertSignalView {
+  symbol: string;
+  product_name: string;
+  sector: string;
+  severity: string;
+  reason: string;
+  change_pct: number;
+  timestamp: string;
+}
+
+export interface ReportWorkflowItem {
+  trigger: string;
+  label: string;
+  status: string;
+  report_id?: string | null;
+  symbol?: string | null;
+  created_at?: string | null;
+  summary: string;
+}
+
+export interface OverseasLinkView {
+  local_symbol: string;
+  local_name: string;
+  overseas_symbol: string;
+  overseas_name: string;
+  driver: string;
+  transmission: string;
+  status: string;
+}
+
+export interface ProfessionalDashboard {
+  decision_flow: DecisionFlowItem[];
+  factors: FactorSnapshot[];
+  alerts: AlertSignalView[];
+  report_workflow: ReportWorkflowItem[];
+  overseas_links: OverseasLinkView[];
+}
+
 /** 后端统一响应体。 */
 export interface ApiResponse<T> {
   code: number;
@@ -329,6 +409,23 @@ export interface WsTickMessage {
   data: { last: number; vol: number; ts: number };
 }
 
+export interface RealtimeQuote {
+  symbol: string;
+  last_price: number;
+  prev_close: number;
+  change_pct: number;
+  timestamp: string;
+}
+
+export interface WsQuoteMessage {
+  type: "quote";
+  symbol: string;
+  last_price: number;
+  prev_close: number;
+  change_pct: number;
+  timestamp: string;
+}
+
 export interface WsNotification {
   type: "notification";
   level: "info" | "warn" | "error";
@@ -337,4 +434,4 @@ export interface WsNotification {
   link?: string;
 }
 
-export type WsMessage = WsKlineMessage | WsTickMessage | WsNotification | { type: "ping" | "pong" | "system" };
+export type WsMessage = WsKlineMessage | WsTickMessage | WsQuoteMessage | WsNotification | { type: "ping" | "pong" | "system" };

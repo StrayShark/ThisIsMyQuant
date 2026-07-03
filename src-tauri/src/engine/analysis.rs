@@ -31,8 +31,7 @@ pub async fn build_context(
     }
     let summary = indicator::summary(&klines);
 
-    let fundamentals =
-        crate::engine::fundamentals::fetch_fundamentals(akshare, symbol).await;
+    let fundamentals = crate::engine::fundamentals::fetch_fundamentals(akshare, symbol).await;
 
     let main_symbol = sectors::get_product_by_symbol(symbol)
         .map(|p| p.symbol.to_uppercase())
@@ -54,7 +53,8 @@ pub async fn build_context(
                         .iter()
                         .map(|n| news_entry_json(n, Some(dim_code), Some(label)))
                         .collect();
-                    news_by_dimension.insert(dim_code.to_string(), serde_json::Value::Array(entries));
+                    news_by_dimension
+                        .insert(dim_code.to_string(), serde_json::Value::Array(entries));
                 }
             }
         }
@@ -87,10 +87,7 @@ pub async fn build_context(
     let mut calendar_events: Vec<serde_json::Value> = Vec::new();
     if let Some(j) = jinshi {
         let (cal_start, cal_end) = default_calendar_range_from_today();
-        if let Ok(events) = j
-            .fetch_calendar_events(cal_start, cal_end, 3, None)
-            .await
-        {
+        if let Ok(events) = j.fetch_calendar_events(cal_start, cal_end, 3, None).await {
             let filtered =
                 calendar_filter::filter_for_analysis(events, sector_code, &dimension_codes);
             calendar_events = filtered
@@ -138,7 +135,13 @@ pub async fn build_context(
             klines.last().unwrap().start_time.clone(),
         ]
     };
-    let recent_closes: Vec<f64> = klines.iter().rev().take(10).map(|k| k.close).rev().collect();
+    let recent_closes: Vec<f64> = klines
+        .iter()
+        .rev()
+        .take(10)
+        .map(|k| k.close)
+        .rev()
+        .collect();
 
     let dimension_list: Vec<serde_json::Value> = dimension_codes
         .iter()
@@ -203,8 +206,14 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
     let dimension_list = ctx["dimensions"].as_array().cloned().unwrap_or_default();
     let news_by_dim = ctx["news_by_dimension"].as_object().cloned();
     let news = ctx["news"].as_array().cloned().unwrap_or_default();
-    let calendar = ctx["calendar_events"].as_array().cloned().unwrap_or_default();
-    let dimension_facts = ctx["dimension_facts"].as_array().cloned().unwrap_or_default();
+    let calendar = ctx["calendar_events"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let dimension_facts = ctx["dimension_facts"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     let fundamentals = &ctx["fundamentals"];
 
     let trigger_label = match trigger {
@@ -221,7 +230,8 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
         .map(|v| format!("{v:.2}"))
         .unwrap_or_else(|| "N/A".into());
 
-    let dimension_news_block = render_dimension_news_block(&dimension_list, news_by_dim.as_ref(), &news);
+    let dimension_news_block =
+        render_dimension_news_block(&dimension_list, news_by_dim.as_ref(), &news);
     let calendar_block = render_calendar_block(&calendar);
     let facts_block = render_dimension_facts_block(&dimension_facts);
     let fundamentals_block = render_fundamentals_block(fundamentals);
@@ -238,14 +248,18 @@ pub fn render_prompt(ctx: &serde_json::Value, trigger: &str) -> String {
         .join("\n");
 
     let horizon_block = match trigger {
-        "tomorrow" => "\n\n## 重点输出（明日展望）\n\
+        "tomorrow" => {
+            "\n\n## 重点输出（明日展望）\n\
             请在 Markdown 正文中**单独增加**「明日走势展望」小节，基于日 K 技术面、\
             财经日历中与下一交易日相关的 ★3+ 事件、以及分维度资讯，给出下一交易日的：\
-            方向倾向（偏多/偏空/震荡）、关键价位、主要风险与催化。\n",
-        "short_term" => "\n\n## 重点输出（短期研判）\n\
+            方向倾向（偏多/偏空/震荡）、关键价位、主要风险与催化。\n"
+        }
+        "short_term" => {
+            "\n\n## 重点输出（短期研判）\n\
             请在 Markdown 正文中**单独增加**「短期走势研判（3-5个交易日）」小节，\
             结合日 K 均线/MACD 趋势、量能、宏观日程与产业维度，给出未来 3-5 个交易日的\
-            路径推演、区间目标与止损/止盈参考（非具体操作建议）。\n",
+            路径推演、区间目标与止损/止盈参考（非具体操作建议）。\n"
+        }
         _ => "",
     };
 
@@ -390,7 +404,12 @@ fn render_dimension_news_block(
                             i + 1,
                             n["time"].as_str().unwrap_or(""),
                             n["title"].as_str().unwrap_or(""),
-                            n["summary"].as_str().unwrap_or("").chars().take(160).collect::<String>()
+                            n["summary"]
+                                .as_str()
+                                .unwrap_or("")
+                                .chars()
+                                .take(160)
+                                .collect::<String>()
                         )
                     })
                     .collect();
@@ -416,7 +435,12 @@ fn render_dimension_news_block(
                     dim,
                     n["time"].as_str().unwrap_or(""),
                     n["title"].as_str().unwrap_or(""),
-                    n["summary"].as_str().unwrap_or("").chars().take(160).collect::<String>()
+                    n["summary"]
+                        .as_str()
+                        .unwrap_or("")
+                        .chars()
+                        .take(160)
+                        .collect::<String>()
                 )
             })
             .collect();

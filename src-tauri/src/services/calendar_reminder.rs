@@ -17,7 +17,10 @@ pub fn spawn_calendar_reminder(app: AppHandle, state: Arc<AppState>) {
             interval.tick().await;
             let (reminder_enabled, ahead) = {
                 let cfg = state.config();
-                (cfg.calendar_reminder_enabled, cfg.calendar_reminder_mins.max(5))
+                (
+                    cfg.calendar_reminder_enabled,
+                    cfg.calendar_reminder_mins.max(5),
+                )
             };
             if !reminder_enabled {
                 continue;

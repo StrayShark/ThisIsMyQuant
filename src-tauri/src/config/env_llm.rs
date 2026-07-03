@@ -81,7 +81,11 @@ fn parse_env_file(path: &Path) -> HashMap<String, String> {
     out
 }
 
-fn env_lookup<'a>(project: &'a HashMap<String, String>, global: &'a HashMap<String, String>, key: &str) -> Option<&'a str> {
+fn env_lookup<'a>(
+    project: &'a HashMap<String, String>,
+    global: &'a HashMap<String, String>,
+    key: &str,
+) -> Option<&'a str> {
     project
         .get(key)
         .filter(|v| !v.trim().is_empty())

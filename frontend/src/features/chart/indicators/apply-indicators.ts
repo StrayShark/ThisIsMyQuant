@@ -9,6 +9,10 @@ import type { ChartUserConfig } from "../chart-config";
 import { bollinger, emaPoints, extractCloses, extractOhlc, kdj, macd, rsi, sar, sma } from "./calc";
 import type { IndicatorSettings, IndicatorToggles } from "./types";
 
+function cssVar(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
 /** pane 索引：0=K线 1=成交量 2=MACD 3=RSI 4=KDJ */
 export const PANE = { MAIN: 0, VOLUME: 1, MACD: 2, RSI: 3, KDJ: 4 } as const;
 
@@ -82,12 +86,12 @@ function ensureMacdSeries(chart: IChartApi, bundle: IndicatorSeriesBundle) {
   if (!bundle.macd.dif) {
     bundle.macd.dif = chart.addSeries(
       LineSeries,
-      { ...OVERLAY_STYLE, color: "#2962FF", lineWidth: 1 },
+      { ...OVERLAY_STYLE, color: cssVar("--indicator-macd-dif"), lineWidth: 1 },
       PANE.MACD
     );
     bundle.macd.dea = chart.addSeries(
       LineSeries,
-      { ...OVERLAY_STYLE, color: "#FF6D00", lineWidth: 1 },
+      { ...OVERLAY_STYLE, color: cssVar("--indicator-macd-dea"), lineWidth: 1 },
       PANE.MACD
     );
     bundle.macd.hist = chart.addSeries(
@@ -102,7 +106,7 @@ function ensureRsiSeries(chart: IChartApi, bundle: IndicatorSeriesBundle) {
   if (!bundle.rsi) {
     bundle.rsi = chart.addSeries(
       LineSeries,
-      { ...OVERLAY_STYLE, color: "#7E57C2", lineWidth: 2 },
+      { ...OVERLAY_STYLE, color: cssVar("--indicator-rsi"), lineWidth: 2 },
       PANE.RSI
     );
   }
@@ -112,17 +116,17 @@ function ensureKdjSeries(chart: IChartApi, bundle: IndicatorSeriesBundle) {
   if (!bundle.kdj.k) {
     bundle.kdj.k = chart.addSeries(
       LineSeries,
-      { ...OVERLAY_STYLE, color: "#2962FF", lineWidth: 1 },
+      { ...OVERLAY_STYLE, color: cssVar("--indicator-kdj-k"), lineWidth: 1 },
       PANE.KDJ
     );
     bundle.kdj.d = chart.addSeries(
       LineSeries,
-      { ...OVERLAY_STYLE, color: "#FF6D00", lineWidth: 1 },
+      { ...OVERLAY_STYLE, color: cssVar("--indicator-kdj-d"), lineWidth: 1 },
       PANE.KDJ
     );
     bundle.kdj.j = chart.addSeries(
       LineSeries,
-      { ...OVERLAY_STYLE, color: "#AB47BC", lineWidth: 1 },
+      { ...OVERLAY_STYLE, color: cssVar("--indicator-kdj-j"), lineWidth: 1 },
       PANE.KDJ
     );
   }
@@ -153,11 +157,11 @@ export function syncIndicatorData(
     ensureOverlayLine(chart, bundle, key, color).setData(data);
   };
 
-  setOverlay("ma5", toggles.ma5, "#0070f3", sma(closes, 5, times));
-  setOverlay("ma20", toggles.ma20, "#f5a623", sma(closes, 20, times));
-  setOverlay("ma60", toggles.ma60, "#7928ca", sma(closes, 60, times));
-  setOverlay("ema12", toggles.ema12, "#00bcd4", emaPoints(closes, 12, times));
-  setOverlay("ema26", toggles.ema26, "#009688", emaPoints(closes, 26, times));
+  setOverlay("ma5", toggles.ma5, cssVar("--indicator-ma5"), sma(closes, 5, times));
+  setOverlay("ma20", toggles.ma20, cssVar("--indicator-ma20"), sma(closes, 20, times));
+  setOverlay("ma60", toggles.ma60, cssVar("--indicator-ma60"), sma(closes, 60, times));
+  setOverlay("ema12", toggles.ema12, cssVar("--indicator-ema12"), emaPoints(closes, 12, times));
+  setOverlay("ema26", toggles.ema26, cssVar("--indicator-ema26"), emaPoints(closes, 26, times));
 
   if (toggles.boll) {
     const bb = bollinger(
@@ -166,20 +170,20 @@ export function syncIndicatorData(
       indicatorSettings.bollPeriod,
       indicatorSettings.bollMult
     );
-    setOverlay("bollUpper", true, "#666666", bb.upper);
-    setOverlay("bollMid", true, "#888888", bb.middle);
-    setOverlay("bollLower", true, "#666666", bb.lower);
+    setOverlay("bollUpper", true, cssVar("--indicator-boll-upper"), bb.upper);
+    setOverlay("bollMid", true, cssVar("--indicator-boll-mid"), bb.middle);
+    setOverlay("bollLower", true, cssVar("--indicator-boll-lower"), bb.lower);
   } else {
-    setOverlay("bollUpper", false, "#666666", []);
-    setOverlay("bollMid", false, "#888888", []);
-    setOverlay("bollLower", false, "#666666", []);
+    setOverlay("bollUpper", false, cssVar("--indicator-boll-upper"), []);
+    setOverlay("bollMid", false, cssVar("--indicator-boll-mid"), []);
+    setOverlay("bollLower", false, cssVar("--indicator-boll-lower"), []);
   }
 
   if (toggles.sar && klines.length > 0) {
     const ohlc = extractOhlc(klines);
-    setOverlay("sar", true, "#e91e63", sar(ohlc.highs, ohlc.lows, ohlc.times));
+    setOverlay("sar", true, cssVar("--indicator-sar"), sar(ohlc.highs, ohlc.lows, ohlc.times));
   } else {
-    setOverlay("sar", false, "#e91e63", []);
+    setOverlay("sar", false, cssVar("--indicator-sar"), []);
   }
 
   if (toggles.macd && klines.length > 0) {

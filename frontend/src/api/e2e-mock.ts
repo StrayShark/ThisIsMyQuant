@@ -31,9 +31,46 @@ const MOCK_REPORT: AnalysisReport = {
   dimension_summary: {
     demand: ["地产需求偏弱，基建托底有限"],
     inventory: ["社会库存小幅去化"],
+    technical: ["短期偏多，关注突破前高"],
   },
   news_ids: ["news-e2e-1"],
 };
+
+const MOCK_REPORTS: AnalysisReport[] = [
+  MOCK_REPORT,
+  {
+    id: "e2e-report-au",
+    symbol: "au0",
+    trigger: "scheduled",
+    provider: "doubao",
+    prompt_version: "v2",
+    context_summary: "last=520 change%=-0.8 MA5=525",
+    content: "黄金偏空，美元走强压制金价。",
+    created_at: new Date(Date.now() - 3600000).toISOString(),
+    tags: [],
+    dimension_summary: {
+      overseas_finance: ["美联储鹰派预期，金价承压偏空"],
+      flow: ["ETF 持仓小幅流出"],
+    },
+    news_ids: [],
+  },
+  {
+    id: "e2e-report-cu",
+    symbol: "cu0",
+    trigger: "daily",
+    provider: "doubao",
+    prompt_version: "v2",
+    context_summary: "last=78000 change%=2.1 MA5=77200",
+    content: "沪铜偏多，供应扰动支撑价格。",
+    created_at: new Date(Date.now() - 7200000).toISOString(),
+    tags: [],
+    dimension_summary: {
+      domestic_supply: ["冶炼厂检修，供应偏紧"],
+      technical: ["突破均线，偏多格局"],
+    },
+    news_ids: [],
+  },
+];
 
 const MOCK_CONTRACTS: Contract[] = [
   {
@@ -138,8 +175,9 @@ export const e2eMockApi = {
         calendar_fetched_at: new Date().toISOString(),
         calendar_cached_events: 2,
       },
-      poll: { running: true, interval: 5, symbol_count: 3 },
+      poll: { running: true, interval: 5, symbol_count: 26 },
       realtime: { available: true, source: "market_poll" },
+      realtime_enabled: true,
       llm: { doubao: true },
       db: true,
     },
@@ -177,7 +215,7 @@ export const e2eMockApi = {
 
   listFollowups: async () => MOCK_FOLLOWUPS,
 
-  listReports: async () => [MOCK_REPORT],
+  listReports: async () => MOCK_REPORTS,
 
   getReport: async (id: string) => ({ ...MOCK_REPORT, id }),
 
@@ -185,7 +223,7 @@ export const e2eMockApi = {
     akshare_enabled: true,
     akshare_realtime_enabled: true,
     realtime_poll_interval: 5,
-    watchlist: ["rb2510", "au2512", "IF2512"],
+    core_product_count: 26,
     jinshi_enabled: true,
     jinshi_poll_interval: 300,
     default_llm_provider: "doubao",
@@ -197,6 +235,7 @@ export const e2eMockApi = {
     schedule_enabled: true,
     scheduler_running: true,
     database_path: "data/quant.db",
+    preferences_path: "data/user_preferences.json",
     news_classify_enabled: true,
     news_classify_batch: 10,
     market_feed: "akshare_poll",
@@ -249,33 +288,37 @@ export const e2eMockApi = {
     default_provider: string;
   }) => e2eMockApi.getLlmSetup(),
 
-  getUserPreferences: async () => ({
-    watchlist: ["rb2510", "au2512", "if2512"],
-    schedule_enabled: true,
-    schedule_interval_hours: 6,
-    schedule_analysis_trigger: "scheduled",
-    daily_briefing_enabled: true,
-    daily_briefing_hour: 17,
-    akshare_enabled: true,
-    akshare_realtime_enabled: true,
-    realtime_poll_interval: 5,
-    jinshi_enabled: true,
-    jinshi_poll_interval: 300,
-    default_llm_provider: "doubao",
-    news_classify_enabled: true,
-    news_classify_batch: 10,
-    anomaly_enabled: true,
-    anomaly_price_pct: 1.5,
-    anomaly_window_secs: 300,
-    anomaly_cooldown_secs: 900,
-    backfill_days_daily: 120,
-    backfill_days_minute: 5,
-    ticks_enabled: true,
-    retention_days_klines: 365,
-    retention_days_ticks: 14,
-    calendar_reminder_enabled: true,
-    calendar_reminder_mins: 30,
-  }),
+  getUserPreferences: async () => {
+    const prefs = {
+      schedule_enabled: true,
+      schedule_interval_hours: 6,
+      schedule_analysis_trigger: "scheduled",
+      daily_briefing_enabled: true,
+      daily_briefing_hour: 17,
+      akshare_enabled: true,
+      akshare_realtime_enabled: true,
+      realtime_poll_interval: 5,
+      jinshi_enabled: true,
+      jinshi_poll_interval: 300,
+      default_llm_provider: "doubao",
+      news_classify_enabled: true,
+      news_classify_batch: 10,
+      anomaly_enabled: true,
+      anomaly_price_pct: 1.5,
+      anomaly_window_secs: 300,
+      anomaly_cooldown_secs: 900,
+      backfill_days_daily: 120,
+      backfill_days_minute: 5,
+      ticks_enabled: true,
+      retention_days_klines: 365,
+      retention_days_ticks: 14,
+      calendar_reminder_enabled: true,
+      calendar_reminder_mins: 30,
+      quote_color_scheme: "green_up" as const,
+      theme: "cursor" as const,
+    };
+    return prefs;
+  },
 
   saveUserPreferences: async (prefs: UserPreferences) => prefs,
 
@@ -286,6 +329,128 @@ export const e2eMockApi = {
     "id,symbol,trigger,provider,prompt_version,created_at,context_summary,content\ne2e-1,rb0,manual,doubao,v4,2024-01-01,ok,content\n",
 
   importKlinesCsv: async () => ({ imported: 1 }),
+
+  getProfessionalDashboard: async () => ({
+    decision_flow: [
+      {
+        id: "news-e2e-1",
+        title: "螺纹钢需求偏弱，地产新开工下滑",
+        summary: "终端需求恢复缓慢，贸易商观望情绪较浓。",
+        source: "jin10",
+        display_time: new Date().toISOString(),
+        symbol: "RB0",
+        product_name: "螺纹钢",
+        sector: "黑色建材",
+        dimension_code: "demand",
+        dimension_label: "需求",
+        impact: "bearish",
+        confidence: 0.9,
+      },
+      {
+        id: "news-e2e-2",
+        title: "红海扰动延续，集运运价维持高位",
+        summary: "绕航导致有效运力收缩，欧线合约波动加大。",
+        source: "jin10",
+        display_time: new Date(Date.now() - 1800000).toISOString(),
+        symbol: "EC0",
+        product_name: "集运欧线",
+        sector: "航运运价",
+        dimension_code: "geopolitics",
+        dimension_label: "地缘",
+        impact: "bullish",
+        confidence: 0.82,
+      },
+    ],
+    factors: [
+      {
+        sector: "黑色建材",
+        symbol: "RB0",
+        product_name: "螺纹钢",
+        updated_at: new Date().toISOString(),
+        quality: "live+history",
+        signals: [
+          {
+            label: "价格动量",
+            value: "+1.24%",
+            signal: "bullish",
+            detail: "来自实时主力报价或最近日 K 收盘变化",
+          },
+          {
+            label: "成交活跃度",
+            value: "156000",
+            signal: "tracked",
+            detail: "使用主力连续日线成交量",
+          },
+        ],
+      },
+      {
+        sector: "能源化工",
+        symbol: "SC0",
+        product_name: "原油",
+        updated_at: new Date().toISOString(),
+        quality: "history",
+        signals: [
+          {
+            label: "核心驱动",
+            value: "原油价格 / 装置开工率 / 化工库存",
+            signal: "watch",
+            detail: "承接后续库存、利润、到港等专源",
+          },
+        ],
+      },
+    ],
+    alerts: [
+      {
+        symbol: "RB0",
+        product_name: "螺纹钢",
+        sector: "黑色建材",
+        severity: "medium",
+        reason: "主力报价较昨收上涨1.24%",
+        change_pct: 1.24,
+        timestamp: new Date().toISOString(),
+      },
+    ],
+    report_workflow: [
+      {
+        trigger: "tomorrow",
+        label: "盘前计划",
+        status: "ready",
+        report_id: "e2e-report-1",
+        symbol: "RB0",
+        created_at: new Date().toISOString(),
+        summary: "last=3200 change%=1.2 MA5=3180",
+      },
+      {
+        trigger: "anomaly",
+        label: "盘中异动",
+        status: "pending",
+        report_id: null,
+        symbol: null,
+        created_at: null,
+        summary: "等待定时任务或手动触发生成",
+      },
+    ],
+    overseas_links: [
+      {
+        local_symbol: "SC0",
+        local_name: "原油",
+        overseas_symbol: "CL=F",
+        overseas_name: "WTI 原油",
+        driver: "能源",
+        transmission: "外盘原油影响内盘原油、燃油、沥青和聚酯链",
+        status: "tracked",
+      },
+      {
+        local_symbol: "AU0",
+        local_name: "黄金",
+        overseas_symbol: "GC=F",
+        overseas_name: "COMEX 黄金",
+        driver: "贵金属",
+        transmission: "COMEX 黄金、美元与美债实际利率传导沪金沪银",
+        status: "tracked",
+      },
+    ],
+  }),
 
   reclassifyNews: async () => ({ labels_saved: 0 }),
 
@@ -313,9 +478,9 @@ export const e2eMockApi = {
     last_error: null,
   }),
 
-  triggerBatchAnalysis: async (params: { symbols: string[] }) => ({
+  triggerBatchAnalysis: async (params?: { symbols?: string[]; trigger?: string }) => ({
     started: true,
-    total: params.symbols.length,
+    total: params?.symbols?.length ?? 26,
   }),
 
   getBatchStatus: async () => ({
@@ -331,7 +496,7 @@ export const e2eMockApi = {
       poll: {
         running: true,
         interval: 5,
-        symbols: ["rb2510"],
+        symbols: ["RB0"],
         symbol_count: 1,
         feed_source: "akshare_poll",
       },
@@ -348,26 +513,41 @@ export const e2eMockApi = {
         last_error: null,
       },
     },
+    quote_status: {
+      quote_count: 3,
+      stale_count: 0,
+      stale_after_secs: 15,
+      newest_timestamp: new Date().toISOString(),
+      max_age_secs: 2,
+    },
     llm_health: { doubao: true, ollama: false },
     llm_last_errors: {},
     questdb_configured: false,
     questdb_online: false,
-    overseas_stub: { status: "stub", message: "海外期货 stub" },
+    overseas: {
+      status: "ok",
+      message: "Yahoo Finance 海外期货参考源",
+      symbols: [
+        { symbol: "CL=F", name: "WTI 原油" },
+        { symbol: "GC=F", name: "COMEX 黄金" },
+      ],
+    },
     batch_job: { running: false, total: 0, completed: 0, current_symbol: null, errors: [] },
     prompt_version: "v4",
   }),
 
   probeOllama: async () => false,
 
-  marketSubscribe: async () => ({ subscribed: ["rb2510"] }),
+  marketSubscribe: async () => ({ subscribed: ["RB0"] }),
+  getRealtimeQuotes: async () => [],
 
-  marketUnsubscribe: async () => ({ unsubscribed: ["rb2510"] }),
+  marketUnsubscribe: async () => ({ unsubscribed: ["RB0"] }),
 
   getRuntimeStatus: async () => ({
     poll: {
       running: true,
       interval: 5,
-      symbols: ["rb2510"],
+      symbols: ["RB0"],
       symbol_count: 1,
       feed_source: "akshare_poll",
     },

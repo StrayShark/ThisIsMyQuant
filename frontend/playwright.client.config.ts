@@ -9,6 +9,7 @@ export default defineConfig({
   timeout: 600_000,
   reporter: [["list"], ["html", { open: "never" }]],
   globalSetup: "./e2e/global-setup-client.ts",
+  globalTeardown: "./e2e/global-teardown-client.ts",
   projects: [
     {
       name: "client-live",

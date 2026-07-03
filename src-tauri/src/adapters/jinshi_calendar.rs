@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::config::Config;
 use crate::error::{AppError, AppResult};
-use crate::models::{CalendarEvent, news_content_hash};
+use crate::models::{news_content_hash, CalendarEvent};
 
 const RILI_HEADERS: [(&str, &str); 3] = [
     ("x-app-id", "sKKYe29sFuJaeOCJ"),
@@ -79,7 +79,14 @@ async fn fetch_calendar_day(
     let url = format!("{base}/data/getDay");
     let mut req = http.get(&url).query(&[("date", date)]);
     for (k, v) in RILI_HEADERS {
-        req = req.header(k, if k == "x-app-id" && !app_id.is_empty() { app_id } else { v });
+        req = req.header(
+            k,
+            if k == "x-app-id" && !app_id.is_empty() {
+                app_id
+            } else {
+                v
+            },
+        );
     }
     let resp = req.send().await?;
     if !resp.status().is_success() {
@@ -96,7 +103,7 @@ pub fn parse_calendar_payload(payload: &Value) -> Vec<CalendarEvent> {
     let mut events = Vec::new();
     for arr in extract_event_arrays(payload) {
         for item in arr {
-            if let Some(ev) = parse_calendar_item(&item, "data") {
+            if let Some(ev) = parse_calendar_item(item, "data") {
                 events.push(ev);
             }
         }
@@ -131,17 +138,10 @@ fn extract_event_arrays(payload: &Value) -> Vec<&Vec<Value>> {
 
 fn parse_calendar_item(raw: &Value, default_type: &str) -> Option<CalendarEvent> {
     let obj = raw.as_object()?;
-    let mut country = pick_str(obj, &["country", "country_name", "region"])
-        .unwrap_or_default();
+    let mut country = pick_str(obj, &["country", "country_name", "region"]).unwrap_or_default();
     let name = pick_str(
         obj,
-        &[
-            "name",
-            "indicator_name",
-            "title",
-            "event_content",
-            "event",
-        ],
+        &["name", "indicator_name", "title", "event_content", "event"],
     )?;
     if name.trim().is_empty() {
         return None;
@@ -171,17 +171,13 @@ fn parse_calendar_item(raw: &Value, default_type: &str) -> Option<CalendarEvent>
     } else {
         default_type.into()
     };
-    let status = if actual.as_deref().unwrap_or("").trim().is_empty() {
-        "scheduled".into()
-    } else if is_future_pub_time(&pub_time) {
-        "scheduled".into()
-    } else {
-        "released".into()
-    };
-    let id = news_content_hash(
-        &format!("{country}|{name}"),
-        &pub_time,
-    );
+    let status =
+        if actual.as_deref().unwrap_or("").trim().is_empty() || is_future_pub_time(&pub_time) {
+            "scheduled".into()
+        } else {
+            "released".into()
+        };
+    let id = news_content_hash(&format!("{country}|{name}"), &pub_time);
     Some(CalendarEvent {
         id,
         pub_time,
@@ -239,11 +235,48 @@ fn is_future_pub_time(pub_time: &str) -> bool {
 
 fn extract_country_from_title(title: &str) -> String {
     const PREFIXES: &[&str] = &[
-        "欧元区", "中国香港", "中国台湾", "中国", "美国", "英国", "德国", "日本", "法国", "意大利",
-        "西班牙", "加拿大", "澳大利亚", "新西兰", "韩国", "印度", "巴西", "俄罗斯", "瑞士",
-        "瑞典", "挪威", "丹麦", "荷兰", "比利时", "奥地利", "新加坡", "马来西亚", "泰国",
-        "越南", "菲律宾", "南非", "墨西哥", "阿根廷", "土耳其", "沙特", "阿联酋", "以色列",
-        "波兰", "捷克", "匈牙利", "印尼", "印度尼西亚",
+        "欧元区",
+        "中国香港",
+        "中国台湾",
+        "中国",
+        "美国",
+        "英国",
+        "德国",
+        "日本",
+        "法国",
+        "意大利",
+        "西班牙",
+        "加拿大",
+        "澳大利亚",
+        "新西兰",
+        "韩国",
+        "印度",
+        "巴西",
+        "俄罗斯",
+        "瑞士",
+        "瑞典",
+        "挪威",
+        "丹麦",
+        "荷兰",
+        "比利时",
+        "奥地利",
+        "新加坡",
+        "马来西亚",
+        "泰国",
+        "越南",
+        "菲律宾",
+        "南非",
+        "墨西哥",
+        "阿根廷",
+        "土耳其",
+        "沙特",
+        "阿联酋",
+        "以色列",
+        "波兰",
+        "捷克",
+        "匈牙利",
+        "印尼",
+        "印度尼西亚",
     ];
     for prefix in PREFIXES {
         if title.starts_with(prefix) {
@@ -261,9 +294,7 @@ fn filter_calendar_events(
     let mut filtered: Vec<CalendarEvent> = events
         .into_iter()
         .filter(|e| e.star >= opts.min_star)
-        .filter(|e| {
-            opts.country.map(|c| e.country.contains(c)).unwrap_or(true)
-        })
+        .filter(|e| opts.country.map(|c| e.country.contains(c)).unwrap_or(true))
         .filter(|e| event_in_range(&e.pub_time, opts.start, opts.end))
         .filter(|e| seen.insert(e.id.clone()))
         .collect();

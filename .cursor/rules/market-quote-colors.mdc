@@ -1,0 +1,39 @@
+---
+description: K 线与热力图固定绿涨红跌，不受主题与外观涨跌设置影响
+globs: frontend/**/*.{ts,tsx,css}
+alwaysApply: true
+---
+
+# 行情可视化涨跌色
+
+## 规则
+
+**K 线蜡烛图、成交量柱、热力图 / Treemap** 始终使用固定 **绿涨红跌** 配色，**不得**随以下设置变化：
+
+- `html[data-theme]`（dark / cursor / matrix / light）
+- `data-quote-scheme`（外观里的「绿涨红跌 / 红涨绿跌」）
+
+列表、徽章、LLM 多空文案等 **非图表 UI** 仍使用 `--color-up` / `--color-down`（跟随用户外观偏好）。
+
+## 实现
+
+| 用途 | 使用 |
+|------|------|
+| K 线、MiniChart、MACD 柱 | `MARKET_UP` / `MARKET_DOWN` 或 `getChartTheme().upColor`（已绑定 market） |
+| 热力图块、板块均涨跌幅 | `MARKET_CSS.up/down` 或 `marketUpDown()` |
+| CSS 变量（`:root` 唯一来源） | `--market-up` `#50e3c2`、`--market-down` `#ee0000` |
+
+常量与工具：`frontend/src/lib/market-colors.ts`
+
+## 禁止
+
+```typescript
+// ❌ 图表 / 热力图不要用主题 quote 色
+cssVar("--color-up")
+theme.upColor from user chart color picker
+
+// ✅
+import { MARKET_UP, MARKET_CSS, withMarketCandleColors } from "@/lib/market-colors";
+```
+
+新增热力或 K 线相关组件时，先读 `market-colors.ts`，勿在 `themes.css` 为 `--market-*` 做主题覆盖。

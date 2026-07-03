@@ -23,6 +23,11 @@ class EventClient {
       if (this.channels.size > 0 && !this.channels.has(channel)) return;
       this.handlers.forEach((h) => h(msg));
     });
+    await listen<WsMessage>("quote-update", (e) => {
+      const msg = e.payload;
+      if (msg.type !== "quote") return;
+      this.handlers.forEach((h) => h(msg));
+    });
     await listen<WsMessage>("notification", (e) => {
       this.handlers.forEach((h) => h(e.payload));
     });

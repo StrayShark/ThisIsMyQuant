@@ -12,15 +12,19 @@ pub enum LiquidityTier {
     Excluded,
 }
 
-impl LiquidityTier {
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+impl std::str::FromStr for LiquidityTier {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "watch" => Self::Watch,
             "excluded" => Self::Excluded,
             _ => Self::Core,
-        }
+        })
     }
+}
 
+impl LiquidityTier {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Core => "core",
@@ -119,8 +123,16 @@ fn sectors_data() -> Vec<ProductSector> {
                 ("fg", "FG0", "玻璃", "CZCE", watch),
                 ("sa", "SA0", "纯碱", "CZCE", watch),
             ],
-            &["地产与基建需求", "钢厂利润", "铁水产量", "港口库存", "双焦供给"],
-            &["钢材", "铁矿", "焦煤", "焦炭", "螺纹", "热卷", "玻璃", "纯碱"],
+            &[
+                "地产与基建需求",
+                "钢厂利润",
+                "铁水产量",
+                "港口库存",
+                "双焦供给",
+            ],
+            &[
+                "钢材", "铁矿", "焦煤", "焦炭", "螺纹", "热卷", "玻璃", "纯碱",
+            ],
         ),
         sector(
             "metals",
@@ -137,8 +149,24 @@ fn sectors_data() -> Vec<ProductSector> {
                 ("au", "AU0", "黄金", "SHFE", core),
                 ("ag", "AG0", "白银", "SHFE", core),
             ],
-            &["美元与实际利率", "LME/国内库存", "冶炼利润", "新能源需求", "地缘避险"],
-            &["铜", "铝", "锌", "镍", "锡", "黄金", "白银", "碳酸锂", "工业硅"],
+            &[
+                "美元与实际利率",
+                "LME/国内库存",
+                "冶炼利润",
+                "新能源需求",
+                "地缘避险",
+            ],
+            &[
+                "铜",
+                "铝",
+                "锌",
+                "镍",
+                "锡",
+                "黄金",
+                "白银",
+                "碳酸锂",
+                "工业硅",
+            ],
         ),
         sector(
             "agriculture",
@@ -156,7 +184,16 @@ fn sectors_data() -> Vec<ProductSector> {
                 ("lh", "LH0", "生猪", "DCE", core),
             ],
             &["产区天气", "进口到港", "压榨利润", "库存消费比", "养殖利润"],
-            &["大豆", "豆粕", "豆油", "棕榈油", "玉米", "棉花", "白糖", "生猪"],
+            &[
+                "大豆",
+                "豆粕",
+                "豆油",
+                "棕榈油",
+                "玉米",
+                "棉花",
+                "白糖",
+                "生猪",
+            ],
         ),
         sector(
             "energy_chemical",
@@ -173,8 +210,16 @@ fn sectors_data() -> Vec<ProductSector> {
                 ("ru", "RU0", "橡胶", "SHFE", core),
                 ("ur", "UR0", "尿素", "CZCE", watch),
             ],
-            &["原油价格", "装置开工率", "化工库存", "下游利润", "进出口窗口"],
-            &["原油", "燃油", "沥青", "甲醇", "PTA", "橡胶", "尿素", "纸浆"],
+            &[
+                "原油价格",
+                "装置开工率",
+                "化工库存",
+                "下游利润",
+                "进出口窗口",
+            ],
+            &[
+                "原油", "燃油", "沥青", "甲醇", "PTA", "橡胶", "尿素", "纸浆",
+            ],
         ),
         sector(
             "shipping",
@@ -184,24 +229,6 @@ fn sectors_data() -> Vec<ProductSector> {
             &[("ec", "EC0", "集运欧线", "INE", core)],
             &["红海/霍尔木兹扰动", "船舶绕航", "舱位供给", "欧美进口需求"],
             &["集运", "欧线", "航运", "运价", "红海", "霍尔木兹"],
-        ),
-        sector(
-            "financial",
-            "金融期货",
-            52041,
-            "股指和国债期货，核心看权益风险偏好、利率曲线和政策预期。",
-            &[
-                ("if", "IF0", "沪深300股指", "CFFEX", core),
-                ("ih", "IH0", "上证50股指", "CFFEX", core),
-                ("ic", "IC0", "中证500股指", "CFFEX", core),
-                ("im", "IM0", "中证1000股指", "CFFEX", core),
-                ("t", "T0", "10年期国债", "CFFEX", core),
-                ("tl", "TL0", "30年期国债", "CFFEX", core),
-                ("tf", "TF0", "5年期国债", "CFFEX", watch),
-                ("ts", "TS0", "2年期国债", "CFFEX", watch),
-            ],
-            &["权益风险偏好", "政策预期", "利率曲线", "资金面", "海外市场联动"],
-            &["股指", "国债", "利率", "资金面", "A股", "政策"],
         ),
     ]
 }
@@ -225,9 +252,15 @@ pub fn all_sectors() -> &'static [ProductSector] {
 }
 
 pub fn all_products() -> Vec<FutureProduct> {
-    SECTORS
-        .iter()
-        .flat_map(|s| s.products.clone())
+    SECTORS.iter().flat_map(|s| s.products.clone()).collect()
+}
+
+/// 全部 core 商品（行情轮询 / 定时分析 / K 线回填）。
+pub fn core_product_symbols() -> Vec<String> {
+    all_products()
+        .into_iter()
+        .filter(|p| p.default_tier == LiquidityTier::Core)
+        .map(|p| p.symbol.to_lowercase())
         .collect()
 }
 
@@ -314,10 +347,7 @@ pub fn all_contracts() -> Vec<Contract> {
 }
 
 pub fn default_news_category_ids() -> Vec<i64> {
-    let mut ids: Vec<i64> = SECTORS
-        .iter()
-        .filter_map(|s| s.jin10_category_id)
-        .collect();
+    let mut ids: Vec<i64> = SECTORS.iter().filter_map(|s| s.jin10_category_id).collect();
     ids.push(52042);
     ids.sort_unstable();
     ids.dedup();
@@ -388,7 +418,10 @@ mod tests {
             .iter()
             .filter(|p| p.default_tier == LiquidityTier::Core)
             .count();
-        assert!(core >= 32, "expected 32+ core products, got {core}");
+        assert!(
+            core >= 26,
+            "expected 26+ core commodity products, got {core}"
+        );
     }
 
     #[test]

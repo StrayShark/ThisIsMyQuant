@@ -10,13 +10,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PanelSkeleton } from "@/components/ui/panel-skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { dimensionLabel } from "@/data/dimensions";
-import { getFuturesProduct } from "@/data/futures";
 
 export function NewsPanel() {
   const currentSymbol = useAppStore((s) => s.currentSymbol);
   const newsFocus = useAppStore((s) => s.newsFocus);
   const setNewsFocus = useAppStore((s) => s.setNewsFocus);
-  const product = getFuturesProduct(currentSymbol);
 
   const dimension = newsFocus?.dimension ?? null;
 
@@ -56,9 +54,6 @@ export function NewsPanel() {
         <CardTitle>分维度资讯</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-xs text-muted-foreground">
-          {product?.name ?? currentSymbol} · 已分类入库资讯
-        </p>
         {newsFocus && (
           <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-2">
             <div className="min-w-0 flex-1 text-[11px] leading-relaxed text-foreground">

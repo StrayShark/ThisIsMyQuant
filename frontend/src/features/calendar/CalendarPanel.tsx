@@ -76,9 +76,6 @@ export function CalendarPanel() {
         <CardTitle>宏观数据日程</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-xs text-muted-foreground">
-          金十财经日历 · 未来两周 · 点击事件联动下方资讯
-        </p>
         <div className="flex flex-wrap gap-1.5">
           {[3, 4, 5].map((star) => (
             <FilterPill key={star} active={minStar === star} onClick={() => setMinStar(star)}>

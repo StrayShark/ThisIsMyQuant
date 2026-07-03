@@ -39,11 +39,7 @@ pub fn filter_by_keyword(events: Vec<CalendarEvent>, keyword: &str) -> Vec<Calen
         .collect()
 }
 
-fn event_relevant(
-    event: &CalendarEvent,
-    countries: &[&str],
-    keywords: &[&str],
-) -> bool {
+fn event_relevant(event: &CalendarEvent, countries: &[&str], keywords: &[&str]) -> bool {
     if event.star >= 4 {
         return true;
     }
@@ -90,18 +86,34 @@ fn sector_calendar_keywords(sector_code: &str) -> Vec<&'static str> {
             "PMI", "CPI", "PPI", "GDP", "非农", "库存", "产量", "铁", "钢", "地产",
         ],
         "metals" => vec![
-            "CPI", "PPI", "非农", "美联储", "FOMC", "GDP", "PMI", "美元", "LME", "铜", "金",
+            "CPI",
+            "PPI",
+            "非农",
+            "美联储",
+            "FOMC",
+            "GDP",
+            "PMI",
+            "美元",
+            "LME",
+            "铜",
+            "金",
         ],
         "agriculture" => vec![
             "CPI", "PPI", "PMI", "GDP", "天气", "USDA", "库存", "产量", "出口", "进口",
         ],
         "energy_chemical" => vec![
-            "CPI", "PPI", "非农", "OPEC", "原油", "库存", "GDP", "PMI", "美元", "美联储",
+            "CPI",
+            "PPI",
+            "非农",
+            "OPEC",
+            "原油",
+            "库存",
+            "GDP",
+            "PMI",
+            "美元",
+            "美联储",
         ],
         "shipping" => vec!["CPI", "PMI", "GDP", "出口", "进口", "贸易", "地缘", "油价"],
-        "financial" => vec![
-            "CPI", "PPI", "非农", "LPR", "PMI", "GDP", "M2", "社融", "美联储", "FOMC", "股指",
-        ],
         _ => vec!["CPI", "PPI", "非农", "PMI", "GDP", "LPR", "美联储"],
     }
 }
@@ -138,10 +150,7 @@ mod tests {
 
     #[test]
     fn filters_by_sector_keywords() {
-        let events = vec![
-            ev("中国", "5月制造业PMI", 3),
-            ev("日本", "机器订单", 3),
-        ];
+        let events = vec![ev("中国", "5月制造业PMI", 3), ev("日本", "机器订单", 3)];
         let out = filter_for_analysis(events, "black", &["demand", "macro"]);
         assert!(out.iter().any(|e| e.name.contains("PMI")));
         assert!(!out.iter().any(|e| e.name.contains("机器")));

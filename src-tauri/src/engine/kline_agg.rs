@@ -1,10 +1,11 @@
 use chrono::{DateTime, NaiveDate, Utc};
 
-use crate::models::{KLine, parse_dt};
+use crate::models::{parse_dt, KLine};
 
 /// 将小时/分钟 K 线按自然日聚合为日 K。
 pub fn aggregate_to_daily(klines: &[KLine], symbol: &str) -> Vec<KLine> {
-    let mut by_day: std::collections::BTreeMap<NaiveDate, KLine> = std::collections::BTreeMap::new();
+    let mut by_day: std::collections::BTreeMap<NaiveDate, KLine> =
+        std::collections::BTreeMap::new();
     for k in klines {
         let Some(ts) = parse_dt(&k.start_time) else {
             continue;
@@ -55,8 +56,5 @@ fn day_key(start_time: &str) -> String {
 }
 
 pub fn latest_bar_time(klines: &[KLine]) -> Option<DateTime<Utc>> {
-    klines
-        .iter()
-        .filter_map(|k| parse_dt(&k.start_time))
-        .max()
+    klines.iter().filter_map(|k| parse_dt(&k.start_time)).max()
 }

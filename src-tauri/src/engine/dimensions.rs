@@ -15,12 +15,16 @@ const DIMENSIONS: &[DimensionDef] = &[
     DimensionDef {
         code: "seasonality",
         label: "季节性",
-        keywords: &["旺季", "淡季", "检修", "开工", "冬储", "春播", "收割", "种植"],
+        keywords: &[
+            "旺季", "淡季", "检修", "开工", "冬储", "春播", "收割", "种植",
+        ],
     },
     DimensionDef {
         code: "weather",
         label: "天气",
-        keywords: &["降雨", "干旱", "霜冻", "高温", "寒潮", "台风", "洪涝", "天气", "降水"],
+        keywords: &[
+            "降雨", "干旱", "霜冻", "高温", "寒潮", "台风", "洪涝", "天气", "降水",
+        ],
     },
     DimensionDef {
         code: "overseas_upstream",
@@ -32,17 +36,45 @@ const DIMENSIONS: &[DimensionDef] = &[
     DimensionDef {
         code: "domestic_supply",
         label: "国内供给",
-        keywords: &["产量", "开工率", "检修", "复产", "限产", "减产", "供给", "供应", "产能"],
+        keywords: &[
+            "产量",
+            "开工率",
+            "检修",
+            "复产",
+            "限产",
+            "减产",
+            "供给",
+            "供应",
+            "产能",
+        ],
     },
     DimensionDef {
         code: "demand",
         label: "需求",
-        keywords: &["需求", "消费", "销售", "订单", "地产", "基建", "开工率", "出口", "进口需求"],
+        keywords: &[
+            "需求",
+            "消费",
+            "销售",
+            "订单",
+            "地产",
+            "基建",
+            "开工率",
+            "出口",
+            "进口需求",
+        ],
     },
     DimensionDef {
         code: "inventory",
         label: "库存",
-        keywords: &["库存", "仓单", "社会库存", "港口库存", "厂库", "累库", "去库"],
+        keywords: &[
+            "库存",
+            "仓单",
+            "社会库存",
+            "港口库存",
+            "厂库",
+            "累库",
+            "去库",
+        ],
     },
     DimensionDef {
         code: "spread_arb",
@@ -52,30 +84,88 @@ const DIMENSIONS: &[DimensionDef] = &[
     DimensionDef {
         code: "policy",
         label: "政策监管",
-        keywords: &["政策", "关税", "收储", "抛储", "环保", "限产", "监管", "补贴"],
+        keywords: &[
+            "政策", "关税", "收储", "抛储", "环保", "限产", "监管", "补贴",
+        ],
     },
     DimensionDef {
         code: "macro",
         label: "国内宏观",
         keywords: &[
-            "PMI", "GDP", "LPR", "M2", "社融", "降准", "降息", "央行", "国务院", "国家统计局",
-            "人民币", "通胀", "宏观", "股指", "A股", "中国CPI", "中国PPI", "财新", "制造业PMI",
+            "PMI",
+            "GDP",
+            "LPR",
+            "M2",
+            "社融",
+            "降准",
+            "降息",
+            "央行",
+            "国务院",
+            "国家统计局",
+            "人民币",
+            "通胀",
+            "宏观",
+            "股指",
+            "A股",
+            "中国CPI",
+            "中国PPI",
+            "财新",
+            "制造业PMI",
         ],
     },
     DimensionDef {
         code: "overseas_finance",
         label: "国外金融环境",
         keywords: &[
-            "美联储", "FOMC", "Fed", "鲍威尔", "Powell", "加息", "降息", "缩表", "点阵图",
-            "CPI", "PPI", "PCE", "核心PCE", "非农", "NFP", "ISM", "初请", "零售销售",
-            "美国通胀", "美国就业", "美国GDP", "美债", "10年期", "2年期", "美元", "美元指数",
-            "DXY", "鹰派", "鸽派", "利率决策", "货币政策", "欧央行", "ECB", "日本央行",
+            "美联储",
+            "FOMC",
+            "Fed",
+            "鲍威尔",
+            "Powell",
+            "加息",
+            "降息",
+            "缩表",
+            "点阵图",
+            "CPI",
+            "PPI",
+            "PCE",
+            "核心PCE",
+            "非农",
+            "NFP",
+            "ISM",
+            "初请",
+            "零售销售",
+            "美国通胀",
+            "美国就业",
+            "美国GDP",
+            "美债",
+            "10年期",
+            "2年期",
+            "美元",
+            "美元指数",
+            "DXY",
+            "鹰派",
+            "鸽派",
+            "利率决策",
+            "货币政策",
+            "欧央行",
+            "ECB",
+            "日本央行",
         ],
     },
     DimensionDef {
         code: "geopolitics",
         label: "地缘",
-        keywords: &["地缘", "制裁", "战争", "冲突", "红海", "霍尔木兹", "航道", "扰动"],
+        keywords: &[
+            "地缘",
+            "制裁",
+            "战争",
+            "冲突",
+            "红海",
+            "霍尔木兹",
+            "航道",
+            "扰动",
+        ],
     },
     DimensionDef {
         code: "earnings",
@@ -145,29 +235,18 @@ static SECTOR_DIMS: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|
                 "overseas_upstream",
             ],
         ),
-        (
-            "financial",
-            vec!["macro", "overseas_finance", "policy", "flow", "technical"],
-        ),
     ])
 });
 
-static DIM_MAP: Lazy<HashMap<&'static str, DimensionDef>> = Lazy::new(|| {
-    DIMENSIONS
-        .iter()
-        .map(|d| (d.code, d.clone()))
-        .collect()
-});
+static DIM_MAP: Lazy<HashMap<&'static str, DimensionDef>> =
+    Lazy::new(|| DIMENSIONS.iter().map(|d| (d.code, d.clone())).collect());
 
 pub fn all_dimensions() -> &'static [DimensionDef] {
     DIMENSIONS
 }
 
 pub fn dimension_label(code: &str) -> &str {
-    DIM_MAP
-        .get(code)
-        .map(|d| d.label)
-        .unwrap_or(code)
+    DIM_MAP.get(code).map(|d| d.label).unwrap_or(code)
 }
 
 pub fn sector_dimension_codes(sector_code: &str) -> Vec<&'static str> {
@@ -185,8 +264,5 @@ pub fn dimension_keywords(code: &str) -> Vec<&'static str> {
 }
 
 pub fn seed_rows() -> Vec<(&'static str, &'static str, &'static str)> {
-    DIMENSIONS
-        .iter()
-        .map(|d| (d.code, d.label, ""))
-        .collect()
+    DIMENSIONS.iter().map(|d| (d.code, d.label, "")).collect()
 }

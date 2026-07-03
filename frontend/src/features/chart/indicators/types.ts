@@ -90,13 +90,13 @@ export interface IndicatorMeta {
 }
 
 export const INDICATOR_REGISTRY: IndicatorMeta[] = [
-  { id: "ma5", label: "MA5", kind: "overlay", color: "#0070f3" },
-  { id: "ma20", label: "MA20", kind: "overlay", color: "#f5a623" },
-  { id: "ma60", label: "MA60", kind: "overlay", color: "#7928ca" },
-  { id: "ema12", label: "EMA12", kind: "overlay", color: "#00bcd4" },
-  { id: "ema26", label: "EMA26", kind: "overlay", color: "#009688" },
-  { id: "boll", label: "BOLL", kind: "overlay", color: "#888888" },
-  { id: "sar", label: "SAR", kind: "overlay", color: "#e91e63" },
+  { id: "ma5", label: "MA5", kind: "overlay", color: "var(--indicator-ma5)" },
+  { id: "ma20", label: "MA20", kind: "overlay", color: "var(--indicator-ma20)" },
+  { id: "ma60", label: "MA60", kind: "overlay", color: "var(--indicator-ma60)" },
+  { id: "ema12", label: "EMA12", kind: "overlay", color: "var(--indicator-ema12)" },
+  { id: "ema26", label: "EMA26", kind: "overlay", color: "var(--indicator-ema26)" },
+  { id: "boll", label: "BOLL", kind: "overlay", color: "var(--indicator-boll-mid)" },
+  { id: "sar", label: "SAR", kind: "overlay", color: "var(--indicator-sar)" },
   { id: "macd", label: "MACD", kind: "pane" },
   { id: "rsi", label: "RSI", kind: "pane" },
   { id: "kdj", label: "KDJ", kind: "pane" },

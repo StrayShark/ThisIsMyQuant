@@ -5,8 +5,8 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use crate::engine::{
-    build_context, collect_news_ids, facts_from_dimension_summary, parse_llm_report,
-    render_prompt, summarize_context, PROMPT_VERSION, SYSTEM_PROMPT,
+    build_context, collect_news_ids, facts_from_dimension_summary, parse_llm_report, render_prompt,
+    summarize_context, PROMPT_VERSION, SYSTEM_PROMPT,
 };
 use crate::models::{AnalysisDoneEvent, AnalysisReport, NotificationEvent};
 use crate::state::AppState;
@@ -43,23 +43,18 @@ pub async fn run_analysis(
         let app = app.ok_or("stream requires app handle")?;
         let mut chunks = String::new();
         let used = llm
-            .stream(
-                &prompt,
-                SYSTEM_PROMPT,
-                provider.as_deref(),
-                |token| {
-                    chunks.push_str(&token);
-                    let _ = app.emit(
-                        "analysis-delta",
-                        crate::models::AnalysisDeltaEvent { text: token },
-                    );
-                },
-            )
+            .stream(&prompt, SYSTEM_PROMPT, provider, |token| {
+                chunks.push_str(&token);
+                let _ = app.emit(
+                    "analysis-delta",
+                    crate::models::AnalysisDeltaEvent { text: token },
+                );
+            })
             .await
             .map_err(|e| e.to_string())?;
         (chunks, used)
     } else {
-        llm.complete_with_provider(&prompt, SYSTEM_PROMPT, provider.as_deref())
+        llm.complete_with_provider(&prompt, SYSTEM_PROMPT, provider)
             .await
             .map_err(|e| e.to_string())?
     };
@@ -84,12 +79,8 @@ pub async fn run_analysis(
     state.db.save_report(&report).map_err(|e| e.to_string())?;
 
     if let Some(ref summary) = report.dimension_summary {
-        let facts = facts_from_dimension_summary(
-            &report.symbol,
-            &report.id,
-            summary,
-            &report.created_at,
-        );
+        let facts =
+            facts_from_dimension_summary(&report.symbol, &report.id, summary, &report.created_at);
         let _ = state.db.replace_report_facts(&report.id, &facts);
     }
 

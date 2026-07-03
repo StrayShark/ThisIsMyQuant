@@ -6,12 +6,12 @@ use reqwest::Client;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::adapters::{AkshareClient, JinshiClient, LlmRouter};
-use crate::config::Config;
+use crate::config::{load_user_preferences, Config};
 use crate::db::Database;
 use crate::engine::anomaly::{AnomalyConfig, AnomalyDetector};
 use crate::services::{
-    maybe_import_llm_from_env_dev, hydrate_config_llm, new_schedule_status,
-    AnomalyWatcher, BatchAnalysisHandle,
+    hydrate_config_llm, maybe_import_llm_from_env_dev, new_schedule_status, AnomalyWatcher,
+    BatchAnalysisHandle,
 };
 use crate::state::AppState;
 
@@ -20,13 +20,9 @@ pub async fn bootstrap_test_state() -> Arc<AppState> {
     let db = Arc::new(Database::open(&secrets.database_path).expect("db open"));
     db.init_schema().expect("schema");
 
-    let prefs = db
-        .load_user_preferences()
-        .ok()
-        .flatten()
-        .unwrap_or_default()
-        .normalize();
-    let mut config = Config::load_with_preferences(prefs);
+    let prefs = load_user_preferences(&db, &secrets.database_path)
+        .unwrap_or_else(|_| crate::config::UserPreferences::default().normalize());
+    let mut config = Config::load_with_preferences(prefs.clone());
     let _ = hydrate_config_llm(&db, &mut config);
     let _ = maybe_import_llm_from_env_dev(&db, &mut config);
 
@@ -58,6 +54,7 @@ pub async fn bootstrap_test_state() -> Arc<AppState> {
 
     Arc::new(AppState {
         config_store,
+        user_preferences: Arc::new(RwLock::new(prefs)),
         db,
         akshare,
         jinshi,
@@ -67,12 +64,15 @@ pub async fn bootstrap_test_state() -> Arc<AppState> {
         schedule: Mutex::new(None),
         schedule_status: new_schedule_status(
             config.schedule_interval_hours.max(1),
-            config.schedule_enabled && !config.watchlist.is_empty(),
+            config.schedule_enabled,
         ),
         akshare_ready,
-        anomaly: Arc::new(AnomalyWatcher::new(Arc::new(AnomalyDetector::new(anomaly_cfg)))),
+        anomaly: Arc::new(AnomalyWatcher::new(Arc::new(AnomalyDetector::new(
+            anomaly_cfg,
+        )))),
         backfill_status: crate::services::new_status_handle(),
         feed_source: config.market_feed.clone(),
         batch_analysis: BatchAnalysisHandle::new(),
+        quote_cache: Arc::new(RwLock::new(crate::services::QuoteCache::new())),
     })
 }

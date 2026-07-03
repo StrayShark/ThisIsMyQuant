@@ -1,4 +1,4 @@
-//! 历史 K 线回填：启动时对 watchlist 批量拉取并落库。
+//! 历史 K 线回填：启动时对全部 core 品种批量拉取并落库。
 
 use std::sync::Arc;
 
@@ -18,12 +18,7 @@ pub fn spawn_history_backfill(state: Arc<AppState>, status: BackfillStatusHandle
     if !state.config().akshare_enabled {
         return;
     }
-    let symbols: Vec<String> = state
-        .config()
-        .watchlist
-        .iter()
-        .map(|s| s.to_lowercase())
-        .collect();
+    let symbols = crate::engine::sectors::core_product_symbols();
     if symbols.is_empty() {
         return;
     }

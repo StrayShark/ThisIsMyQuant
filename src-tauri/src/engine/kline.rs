@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 
-use crate::models::{KLine, KlineBarData, KlineUpdateEvent, Tick, parse_dt};
+use crate::models::{parse_dt, KLine, KlineBarData, KlineUpdateEvent, Tick};
 
-const INTERVALS: [&str; 5] = ["1m", "5m", "15m", "30m", "1h"];
+const INTERVALS: [&str; 6] = ["1m", "5m", "15m", "30m", "1h", "1d"];
 
 fn interval_seconds(interval: &str) -> i64 {
     match interval {
@@ -11,25 +11,37 @@ fn interval_seconds(interval: &str) -> i64 {
         "15m" => 900,
         "30m" => 1800,
         "1h" => 3600,
+        "1d" => 86400,
         _ => 60,
     }
 }
 
-fn bar_start(ts: DateTime<Utc>, seconds: i64) -> DateTime<Utc> {
+fn bar_start(ts: DateTime<Utc>, interval: &str) -> DateTime<Utc> {
+    if interval == "1d" {
+        return bar_start_shanghai_day(ts);
+    }
+    let seconds = interval_seconds(interval);
     let epoch = ts.timestamp();
     let start = epoch - epoch % seconds;
     DateTime::from_timestamp(start, 0).unwrap_or(ts)
 }
 
+/// 按 UTC+8 自然日对齐日 K（与内盘日 K 展示习惯一致）。
+fn bar_start_shanghai_day(ts: DateTime<Utc>) -> DateTime<Utc> {
+    const OFFSET: i64 = 8 * 3600;
+    let adj = ts.timestamp() + OFFSET;
+    let day = adj - adj % 86400;
+    DateTime::from_timestamp(day - OFFSET, 0).unwrap_or(ts)
+}
+
+#[derive(Default)]
 pub struct KlineAggregator {
     current: std::collections::HashMap<(String, String), KLine>,
 }
 
 impl KlineAggregator {
     pub fn new() -> Self {
-        Self {
-            current: std::collections::HashMap::new(),
-        }
+        Self::default()
     }
 
     pub fn on_tick(&mut self, tick: &Tick) -> Vec<KlineUpdateEvent> {
@@ -43,9 +55,19 @@ impl KlineAggregator {
         events
     }
 
-    fn update(&mut self, tick: &Tick, interval: &str, ts: DateTime<Utc>) -> Option<KlineUpdateEvent> {
-        let seconds = interval_seconds(interval);
-        let start = bar_start(ts, seconds);
+    pub fn current_bar(&self, symbol: &str, interval: &str) -> Option<KLine> {
+        self.current
+            .get(&(symbol.to_lowercase(), interval.to_string()))
+            .cloned()
+    }
+
+    fn update(
+        &mut self,
+        tick: &Tick,
+        interval: &str,
+        ts: DateTime<Utc>,
+    ) -> Option<KlineUpdateEvent> {
+        let start = bar_start(ts, interval);
         let key = (tick.symbol.clone(), interval.to_string());
         let current = self.current.get(&key).cloned();
 

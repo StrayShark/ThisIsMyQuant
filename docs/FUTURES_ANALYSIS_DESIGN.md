@@ -91,7 +91,7 @@ pub struct FutureProduct {
 | demand | 养殖、生猪、饲料 |
 | spread_arb | 豆菜粕价差、进口大豆榨利 |
 
-完整品种表见附录 A（基于现有 40 品种裁剪后约 **32 个 core**）。
+完整品种表见附录 A（v1 按五大板块保留 **27 个 core**，暂不补充金融期货）。
 
 ---
 
@@ -122,9 +122,9 @@ liquidity_score = 0.5 * norm(volume_20d) + 0.5 * norm(oi_proxy_20d)
 - `watch`：边缘流动性 → 可搜索但不默认展示
 - `excluded`：不展示、不分析
 
-### 4.2 建议保留 core 列表（32）
+### 4.2 建议保留 core 列表（27）
 
-剔除流动性长期偏弱或高度重叠品种：**FG0 玻璃、SA0 纯碱、AO0 氧化铝、UR0 尿素、TF0/TS0 短端国债** 等进入 watch 或 excluded（以实际回测为准）。
+剔除流动性长期偏弱或高度重叠品种：**FG0 玻璃、SA0 纯碱、AO0 氧化铝、UR0 尿素** 等进入 watch 或 excluded（以实际回测为准）。金融期货暂不进入 v1 产品目录。
 
 ### 4.3 实现位置
 
@@ -392,7 +392,7 @@ LiquidityJob (daily) ──► liquidity_snapshots ──► filter UI product l
 
 ---
 
-## 附录 A：建议 core 品种（32）
+## 附录 A：建议 core 品种（27）
 
 | 板块 | core 品种 |
 |---|---|
@@ -401,9 +401,10 @@ LiquidityJob (daily) ──► liquidity_snapshots ──► filter UI product l
 | 农产 | M0 Y0 P0 C0 SR0 CF0 LH0 |
 | 能化 | SC0 FU0 BU0 TA0 MA0 PP0 RU0 |
 | 航运 | EC0 |
-| 金融 | IF0 IH0 IC0 IM0 T0 TL0 |
 
-watch：AP0 FG0 SA0 AO0 UR0 TF0 TS0
+watch：AP0 FG0 SA0 AO0 UR0
+
+金融期货：v1 不补充金融期货。`IF0`、`IH0`、`IC0`、`IM0`、`T0`、`TL0`、`TF0`、`TS0` 等仅作为后续扩展候选。
 
 ---
 

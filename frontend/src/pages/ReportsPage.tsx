@@ -2,13 +2,13 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client";
-import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DimensionSummary } from "@/features/analysis/DimensionSummary";
+import { reportDisplaySnippet } from "@/features/analysis/report-text";
 import { triggerLabel } from "@/data/calendar";
 import { getFuturesProduct } from "@/data/futures";
 import type { ReportTrigger } from "@/types";
@@ -60,46 +60,41 @@ export function ReportsPage() {
   return (
     <div className="page-scroll">
       <div className="page-inner">
-        <PageHeader
-          title="分析报告"
-          description="大模型生成的期货走势分析，支持按品种、触发类型与日期筛选。"
-          action={
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/reports/compare">对比报告</Link>
-            </Button>
-          }
-        />
-
-        <div className="mb-4 flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">品种</label>
-            <Input
-              value={symbolFilter}
-              onChange={(e) => setSymbolFilter(e.target.value)}
-              placeholder="rb / 螺纹钢"
-              className="w-[140px]"
-            />
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">品种</label>
+              <Input
+                value={symbolFilter}
+                onChange={(e) => setSymbolFilter(e.target.value)}
+                placeholder="rb / 螺纹钢"
+                className="w-[140px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">日期</label>
+              <Input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="w-[150px]"
+              />
+            </div>
+            <div className="flex flex-wrap gap-1.5 pb-0.5">
+              {TRIGGERS.map((t) => (
+                <FilterPill
+                  key={t.value}
+                  active={triggerFilter === t.value}
+                  onClick={() => setTriggerFilter(t.value)}
+                >
+                  {t.label}
+                </FilterPill>
+              ))}
+            </div>
           </div>
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">日期</label>
-            <Input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="w-[150px]"
-            />
-          </div>
-          <div className="flex flex-wrap gap-1.5 pb-0.5">
-            {TRIGGERS.map((t) => (
-              <FilterPill
-                key={t.value}
-                active={triggerFilter === t.value}
-                onClick={() => setTriggerFilter(t.value)}
-              >
-                {t.label}
-              </FilterPill>
-            ))}
-          </div>
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/reports/compare">对比报告</Link>
+          </Button>
         </div>
 
         {isLoading ? (
@@ -126,7 +121,7 @@ export function ReportsPage() {
                       <DimensionSummary summary={r.dimension_summary} compact />
                     )}
                     <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground">
-                      {r.content}
+                      {reportDisplaySnippet(r, 200) || "（暂无有效摘要）"}
                     </p>
                     <div className="flex justify-between border-t border-border pt-3 text-xs text-muted-foreground">
                       <span>{new Date(r.created_at).toLocaleString("zh-CN")}</span>
@@ -143,11 +138,7 @@ export function ReportsPage() {
             ))}
           </div>
         ) : (
-          <EmptyState
-            icon={FileText}
-            title="暂无报告"
-            description="在行情页 Copilot 生成分析，或使用「明日展望 / 短期研判」；定时任务与每日简报也会自动生成。"
-          />
+          <EmptyState icon={FileText} title="暂无报告" />
         )}
       </div>
     </div>

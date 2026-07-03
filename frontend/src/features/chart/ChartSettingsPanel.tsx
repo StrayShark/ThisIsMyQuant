@@ -111,22 +111,6 @@ export function ChartSettingsPanel({
           <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             蜡烛
           </p>
-          <Field label="上涨色">
-            <Input
-              type="color"
-              value={config.upColor}
-              onChange={(e) => onChange({ upColor: e.target.value })}
-              className="h-7 w-full cursor-pointer p-0.5"
-            />
-          </Field>
-          <Field label="下跌色">
-            <Input
-              type="color"
-              value={config.downColor}
-              onChange={(e) => onChange({ downColor: e.target.value })}
-              className="h-7 w-full cursor-pointer p-0.5"
-            />
-          </Field>
           <Check
             label="显示影线"
             checked={config.wickVisible}

@@ -18,7 +18,7 @@ export function buildChartOptions(config: ChartUserConfig): DeepPartial<ChartOpt
       panes: {
         enableResize: true,
         separatorColor: config.borderColor,
-        separatorHoverColor: "rgba(136, 136, 136, 0.35)",
+        separatorHoverColor: "var(--chart-separator-hover)",
       },
     },
     grid: {
@@ -55,14 +55,14 @@ export function buildChartOptions(config: ChartUserConfig): DeepPartial<ChartOpt
       vertLine: {
         visible: config.crosshairVertVisible,
         labelVisible: true,
-        color: "rgba(136, 136, 136, 0.5)",
-        labelBackgroundColor: "#262626",
+        color: "var(--chart-crosshair)",
+        labelBackgroundColor: "var(--chart-crosshair-label-bg)",
       },
       horzLine: {
         visible: config.crosshairHorzVisible,
         labelVisible: true,
-        color: "rgba(136, 136, 136, 0.5)",
-        labelBackgroundColor: "#262626",
+        color: "var(--chart-crosshair)",
+        labelBackgroundColor: "var(--chart-crosshair-label-bg)",
       },
     },
     handleScroll: config.scrollEnabled

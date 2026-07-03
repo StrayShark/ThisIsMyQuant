@@ -95,6 +95,28 @@ pub struct TickUpdateEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RealtimeQuote {
+    pub symbol: String,
+    pub last_price: f64,
+    pub prev_close: f64,
+    pub change_pct: f64,
+    pub timestamp: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forming_daily: Option<KLine>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct QuoteUpdateEvent {
+    #[serde(rename = "type")]
+    pub msg_type: String,
+    pub symbol: String,
+    pub last_price: f64,
+    pub prev_close: f64,
+    pub change_pct: f64,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisReport {
     pub id: String,
     pub symbol: String,
@@ -185,6 +207,7 @@ pub struct HealthResponse {
     pub news_poll: Option<NewsPollStatus>,
     pub realtime: RealtimeHealth,
     pub jinshi: JinshiHealth,
+    pub realtime_enabled: bool,
     #[serde(default)]
     pub llm_last_errors: std::collections::HashMap<String, String>,
 }
@@ -213,6 +236,15 @@ pub struct NewsPollStatus {
 pub struct RealtimeHealth {
     pub available: bool,
     pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct QuoteCacheStatus {
+    pub quote_count: usize,
+    pub stale_count: usize,
+    pub stale_after_secs: i64,
+    pub newest_timestamp: Option<String>,
+    pub max_age_secs: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -360,7 +392,7 @@ pub struct AppSettingsView {
     pub akshare_enabled: bool,
     pub akshare_realtime_enabled: bool,
     pub realtime_poll_interval: f64,
-    pub watchlist: Vec<String>,
+    pub core_product_count: usize,
     pub jinshi_enabled: bool,
     pub jinshi_poll_interval: f64,
     pub default_llm_provider: String,
@@ -372,6 +404,7 @@ pub struct AppSettingsView {
     pub schedule_enabled: bool,
     pub scheduler_running: bool,
     pub database_path: String,
+    pub preferences_path: String,
     pub news_classify_enabled: bool,
     pub news_classify_batch: usize,
     pub market_feed: String,
@@ -442,13 +475,90 @@ pub struct BatchJobStatus {
 #[derive(Debug, Clone, Serialize)]
 pub struct StatusDashboardView {
     pub runtime: RuntimeStatusView,
+    pub quote_status: QuoteCacheStatus,
     pub llm_health: std::collections::HashMap<String, bool>,
     pub llm_last_errors: std::collections::HashMap<String, String>,
     pub questdb_configured: bool,
     pub questdb_online: bool,
-    pub overseas_stub: serde_json::Value,
+    pub overseas: serde_json::Value,
     pub batch_job: BatchJobStatus,
     pub prompt_version: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DecisionFlowItem {
+    pub id: String,
+    pub title: String,
+    pub summary: String,
+    pub source: String,
+    pub display_time: String,
+    pub symbol: Option<String>,
+    pub product_name: Option<String>,
+    pub sector: Option<String>,
+    pub dimension_code: Option<String>,
+    pub dimension_label: Option<String>,
+    pub impact: String,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FactorSignal {
+    pub label: String,
+    pub value: String,
+    pub signal: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FactorSnapshot {
+    pub sector: String,
+    pub symbol: String,
+    pub product_name: String,
+    pub updated_at: String,
+    pub quality: String,
+    pub signals: Vec<FactorSignal>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AlertSignalView {
+    pub symbol: String,
+    pub product_name: String,
+    pub sector: String,
+    pub severity: String,
+    pub reason: String,
+    pub change_pct: f64,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ReportWorkflowItem {
+    pub trigger: String,
+    pub label: String,
+    pub status: String,
+    pub report_id: Option<String>,
+    pub symbol: Option<String>,
+    pub created_at: Option<String>,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OverseasLinkView {
+    pub local_symbol: String,
+    pub local_name: String,
+    pub overseas_symbol: String,
+    pub overseas_name: String,
+    pub driver: String,
+    pub transmission: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProfessionalDashboardView {
+    pub decision_flow: Vec<DecisionFlowItem>,
+    pub factors: Vec<FactorSnapshot>,
+    pub alerts: Vec<AlertSignalView>,
+    pub report_workflow: Vec<ReportWorkflowItem>,
+    pub overseas_links: Vec<OverseasLinkView>,
 }
 
 #[derive(Debug, Clone, Serialize)]

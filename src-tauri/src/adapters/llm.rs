@@ -18,10 +18,8 @@ pub struct LlmRouter {
 
 impl LlmRouter {
     pub fn new(providers: Vec<LlmProviderConfig>, default: String) -> Self {
-        let clients: HashMap<String, LlmProviderConfig> = providers
-            .into_iter()
-            .map(|p| (p.name.clone(), p))
-            .collect();
+        let clients: HashMap<String, LlmProviderConfig> =
+            providers.into_iter().map(|p| (p.name.clone(), p)).collect();
         let default = if clients.contains_key(&default) {
             default
         } else {
@@ -141,10 +139,7 @@ impl LlmRouter {
     ) -> AppResult<(String, String)> {
         let mut last_err = String::new();
         for cfg in self.ordered(provider) {
-            match self
-                .complete_one(cfg, prompt, system, temperature)
-                .await
-            {
+            match self.complete_one(cfg, prompt, system, temperature).await {
                 Ok(s) => return Ok((s, cfg.name.clone())),
                 Err(e) => {
                     log::warn!("{} complete failed: {e}", cfg.name);
@@ -153,7 +148,9 @@ impl LlmRouter {
                 }
             }
         }
-        Err(AppError::Msg(format!("all LLM providers failed: {last_err}")))
+        Err(AppError::Msg(format!(
+            "all LLM providers failed: {last_err}"
+        )))
     }
 
     async fn complete_one(
@@ -221,7 +218,9 @@ impl LlmRouter {
                 }
             }
         }
-        Err(AppError::Msg(format!("all LLM providers failed: {last_err}")))
+        Err(AppError::Msg(format!(
+            "all LLM providers failed: {last_err}"
+        )))
     }
 
     async fn stream_one<F>(

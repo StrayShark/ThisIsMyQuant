@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { getFuturesProduct } from "@/data/futures";
 import { ensureMarketSubscription } from "@/lib/market-subscribe";
 import { getChartTheme } from "@/lib/chart-theme";
+import { MARKET_CSS } from "@/lib/market-colors";
 import type { Interval, KLine, WsMessage } from "@/types";
 import {
   defaultChartConfigFromTheme,
@@ -307,6 +308,20 @@ export function ChartPanel() {
 
   useEffect(() => {
     const off = wsClient.on((msg: WsMessage) => {
+      if (msg.type === "quote") {
+        if (msg.symbol.toLowerCase() !== currentSymbol.toLowerCase()) return;
+        setLegend((prev) =>
+          prev
+            ? {
+                ...prev,
+                close: msg.last_price,
+                change: msg.last_price - msg.prev_close,
+                changePct: msg.change_pct,
+              }
+            : prev
+        );
+        return;
+      }
       if (msg.type !== "kline") return;
       if (
         msg.symbol.toLowerCase() !== currentSymbol.toLowerCase() ||
@@ -329,9 +344,32 @@ export function ChartPanel() {
           color: volumeBarColor(d.c, d.o, cfg),
         });
       }
+      const klines = klinesRef.current;
+      if (klines.length > 0) {
+        const last = klines[klines.length - 1];
+        const barTime = new Date(last.start_time).getTime();
+        if (Math.abs(barTime - d.t) < 86400000) {
+          last.open = d.o;
+          last.high = d.h;
+          last.low = d.l;
+          last.close = d.c;
+          last.volume = d.v;
+        }
+      }
+      setLegend({
+        time: new Date(d.t).toLocaleString("zh-CN"),
+        open: d.o,
+        high: d.h,
+        low: d.l,
+        close: d.c,
+        volume: d.v,
+        change: d.c - d.o,
+        changePct: d.o ? ((d.c - d.o) / d.o) * 100 : 0,
+      });
+      refreshIndicators();
     });
     return () => off();
-  }, [currentSymbol, currentInterval]);
+  }, [currentSymbol, currentInterval, refreshIndicators]);
 
   useEffect(() => {
     const cfg = configRef.current ?? config;
@@ -347,8 +385,8 @@ export function ChartPanel() {
     refreshIndicators();
   }, [config, applyPaneLayout, refreshIndicators]);
 
-  const changeClass =
-    legend && legend.change >= 0 ? "text-[var(--color-up)]" : "text-[var(--color-down)]";
+  const changeColor =
+    legend && legend.change >= 0 ? MARKET_CSS.up : MARKET_CSS.down;
 
   return (
     <div className="panel flex h-full flex-col">
@@ -404,9 +442,9 @@ export function ChartPanel() {
               <span>O {fmt(legend.open)}</span>
               <span>H {fmt(legend.high)}</span>
               <span>L {fmt(legend.low)}</span>
-              <span className={changeClass}>C {fmt(legend.close)}</span>
+              <span style={{ color: changeColor }}>C {fmt(legend.close)}</span>
               {config.showVolume && <span>V {legend.volume.toLocaleString("zh-CN")}</span>}
-              <span className={changeClass}>
+              <span style={{ color: changeColor }}>
                 {legend.change >= 0 ? "+" : ""}
                 {fmt(legend.change)} ({legend.changePct >= 0 ? "+" : ""}
                 {fmt(legend.changePct)}%)

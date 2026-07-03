@@ -1,6 +1,7 @@
 @import "@fontsource-variable/geist/wght.css";
 @import "@fontsource-variable/geist-mono/wght.css";
 @import "./design/tokens.css";
+@import "./design/themes.css";
 
 @tailwind base;
 @tailwind components;
@@ -24,6 +25,12 @@
     line-height: 1.5;
   }
 
+  html[data-theme="matrix"] body {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0.01em;
+  }
+
   .font-mono,
   code,
   pre {
@@ -32,7 +39,7 @@
   }
 
   ::selection {
-    background: rgba(0, 112, 243, 0.35);
+    background: var(--selection-bg);
     color: var(--color-ink);
   }
 }
@@ -72,6 +79,33 @@
   .pill-done {
     background: var(--color-timeline-done);
     color: var(--color-pill-fg-inverse);
+  }
+
+  /* Cursor 风格壳层：侧栏与顶栏同高，Tauri macOS 为信号灯留空 */
+  :root {
+    --shell-chrome-h: 44px;
+    --shell-controls-h: 44px;
+    --shell-sidebar-expanded: 220px;
+    --shell-sidebar-w: 220px;
+  }
+
+  /* macOS：运行时由 shell-layout.ts 注入精确值 */
+  html.tauri-mac {
+    --shell-chrome-h: 52px;
+    --shell-controls-h: 52px;
+  }
+
+  [data-tauri-drag-region]:not([data-tauri-drag-region="false"]) {
+    app-region: drag;
+    -webkit-app-region: drag;
+  }
+
+  [data-tauri-drag-region="false"],
+  [data-tauri-drag-region] button,
+  [data-tauri-drag-region] input,
+  [data-tauri-drag-region] a {
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
   }
 }
 

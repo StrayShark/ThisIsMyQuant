@@ -28,9 +28,20 @@ pub struct E2eAnalysisResult {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct E2eSymbolCheck {
+    pub symbol: String,
+    pub sector: String,
+    pub bars: usize,
+    pub context_bars: u64,
+    pub ok: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct E2eSuiteReport {
     pub ok: bool,
     pub symbol: String,
+    pub symbol_checks: Vec<E2eSymbolCheck>,
     pub modules: Vec<E2eModuleResult>,
     pub analyses: Vec<E2eAnalysisResult>,
 }
@@ -63,14 +74,16 @@ fn report_has_horizon(content: &str, trigger: &str) -> bool {
         "tomorrow" => {
             lower.contains("明日") || lower.contains("下一交易日") || lower.contains("tomorrow")
         }
-        "short_term" => {
-            lower.contains("短期") || lower.contains("3-5") || lower.contains("3～5")
-        }
+        "short_term" => lower.contains("短期") || lower.contains("3-5") || lower.contains("3～5"),
         _ => true,
     }
 }
 
-pub async fn run_client_e2e_suite(state: &Arc<AppState>, symbol: &str) -> E2eSuiteReport {
+pub async fn run_client_e2e_suite(
+    state: &Arc<AppState>,
+    symbol: &str,
+    symbols: &[String],
+) -> E2eSuiteReport {
     let sym = symbol.to_lowercase();
     let mut modules = Vec::new();
 
@@ -82,7 +95,11 @@ pub async fn run_client_e2e_suite(state: &Arc<AppState>, symbol: &str) -> E2eSui
                 return Err("no LLM provider configured".into());
             }
             let health = llm.health().await;
-            let online: Vec<_> = health.iter().filter(|(_, ok)| **ok).map(|(n, _)| n.clone()).collect();
+            let online: Vec<_> = health
+                .iter()
+                .filter(|(_, ok)| **ok)
+                .map(|(n, _)| n.clone())
+                .collect();
             Ok(format!("providers={providers:?} online={online:?}"))
         })
         .await,
@@ -95,7 +112,10 @@ pub async fn run_client_e2e_suite(state: &Arc<AppState>, symbol: &str) -> E2eSui
             async move {
                 let end = Utc::now();
                 let start = end - Duration::days(30);
-                let klines = ak.get_history(&s, "1d", start, end).await.map_err(|e| e.to_string())?;
+                let klines = ak
+                    .get_history(&s, "1d", start, end)
+                    .await
+                    .map_err(|e| e.to_string())?;
                 if klines.is_empty() {
                     return Err("empty klines".into());
                 }
@@ -141,18 +161,42 @@ pub async fn run_client_e2e_suite(state: &Arc<AppState>, symbol: &str) -> E2eSui
                 } else {
                     None
                 };
-                let ctx = build_context(
-                    &st.akshare,
-                    jinshi.as_ref(),
-                    Some(st.db.as_ref()),
-                    &s,
-                )
-                .await;
+                let ctx =
+                    build_context(&st.akshare, jinshi.as_ref(), Some(st.db.as_ref()), &s).await;
                 let bars = ctx["bars_count"].as_u64().unwrap_or(0);
                 if bars == 0 {
                     return Err("context has no klines".into());
                 }
-                Ok(format!("bars={bars} calendar={}", ctx["calendar_events"].as_array().map(|a| a.len()).unwrap_or(0)))
+                Ok(format!(
+                    "bars={bars} calendar={}",
+                    ctx["calendar_events"]
+                        .as_array()
+                        .map(|a| a.len())
+                        .unwrap_or(0)
+                ))
+            }
+        })
+        .await,
+    );
+
+    modules.push(
+        run_module("fundamentals", || {
+            let ak = state.akshare.clone();
+            let s = sym.clone();
+            async move {
+                let v = crate::engine::fundamentals::fetch_fundamentals(&ak, &s).await;
+                let source = v["source"].as_str().unwrap_or("unavailable");
+                if source == "unavailable" {
+                    return Err(v["note"]
+                        .as_str()
+                        .unwrap_or("fundamentals unavailable")
+                        .into());
+                }
+                Ok(format!(
+                    "source={source} oi={} prev_close={}",
+                    v["open_interest"].as_i64().unwrap_or(0),
+                    v["prev_close"].as_f64().unwrap_or(0.0)
+                ))
             }
         })
         .await,
@@ -176,15 +220,116 @@ pub async fn run_client_e2e_suite(state: &Arc<AppState>, symbol: &str) -> E2eSui
     );
 
     modules.push(
+        run_module("overseas_symbols", || async {
+            let v = crate::adapters::list_overseas_symbols();
+            let status = v["status"].as_str().unwrap_or("");
+            let count = v["symbols"].as_array().map(|a| a.len()).unwrap_or(0);
+            if status != "ok" || count == 0 {
+                return Err(format!(
+                    "overseas source unavailable status={status} count={count}"
+                ));
+            }
+            Ok(format!(
+                "source={} symbols={count}",
+                v["source"].as_str().unwrap_or("unknown")
+            ))
+        })
+        .await,
+    );
+
+    modules.push(
+        run_module("professional_dashboard", || {
+            let st = Arc::clone(state);
+            async move {
+                let v = crate::commands::data::professional_dashboard_view(&st).await;
+                if v.factors.len() < 5 {
+                    return Err(format!(
+                        "expected 5 factor snapshots, got {}",
+                        v.factors.len()
+                    ));
+                }
+                if v.report_workflow.len() < 4 {
+                    return Err(format!(
+                        "expected report workflow, got {}",
+                        v.report_workflow.len()
+                    ));
+                }
+                if v.overseas_links.len() < 5 {
+                    return Err(format!(
+                        "expected overseas links, got {}",
+                        v.overseas_links.len()
+                    ));
+                }
+                Ok(format!(
+                    "news={} factors={} alerts={} workflow={} overseas={}",
+                    v.decision_flow.len(),
+                    v.factors.len(),
+                    v.alerts.len(),
+                    v.report_workflow.len(),
+                    v.overseas_links.len()
+                ))
+            }
+        })
+        .await,
+    );
+
+    modules.push(
         run_module("reports_db", || {
             let st = Arc::clone(state);
             async move {
-                let reports = st.db.get_reports(None, None, 5).map_err(|e| e.to_string())?;
+                let reports = st
+                    .db
+                    .get_reports(None, None, 5)
+                    .map_err(|e| e.to_string())?;
                 Ok(format!("count={}", reports.len()))
             }
         })
         .await,
     );
+
+    let mut symbol_checks = Vec::new();
+    let check_symbols = if symbols.is_empty() {
+        vec![sym.clone()]
+    } else {
+        symbols.iter().map(|s| s.to_lowercase()).collect()
+    };
+    for check_sym in check_symbols {
+        let end = Utc::now();
+        let start = end - Duration::days(30);
+        let sector_ctx = sectors::sector_context(&check_sym);
+        let sector = sector_ctx["name"].as_str().unwrap_or("未分类").to_string();
+        let klines = state
+            .akshare
+            .get_history(&check_sym, "1d", start, end)
+            .await
+            .unwrap_or_default();
+        let jinshi = if state.config().jinshi_enabled {
+            Some(state.jinshi.lock().await.clone())
+        } else {
+            None
+        };
+        let ctx = build_context(
+            &state.akshare,
+            jinshi.as_ref(),
+            Some(state.db.as_ref()),
+            &check_sym,
+        )
+        .await;
+        let context_bars = ctx["bars_count"].as_u64().unwrap_or(0);
+        let ok = !klines.is_empty() && context_bars > 0 && sector != "未分类";
+        symbol_checks.push(E2eSymbolCheck {
+            symbol: check_sym,
+            sector,
+            bars: klines.len(),
+            context_bars,
+            ok,
+            message: if ok {
+                "ok".into()
+            } else {
+                "missing klines/context/sector".into()
+            },
+        });
+    }
 
     let mut analyses = Vec::new();
     for trigger in ["tomorrow", "short_term"] {
@@ -225,10 +370,12 @@ pub async fn run_client_e2e_suite(state: &Arc<AppState>, symbol: &str) -> E2eSui
         }
     }
 
-    let ok = modules.iter().all(|m| m.ok) && analyses.len() == 2;
+    let ok =
+        modules.iter().all(|m| m.ok) && symbol_checks.iter().all(|s| s.ok) && analyses.len() == 2;
     E2eSuiteReport {
         ok,
         symbol: sym,
+        symbol_checks,
         modules,
         analyses,
     }

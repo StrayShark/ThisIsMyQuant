@@ -1,78 +1,142 @@
-/** Cursor 风格极简侧栏 + 顶栏布局。 */
-import { NavLink, useLocation } from "react-router-dom";
-import { BarChart3, FileText, Layers, Settings, Activity } from "lucide-react";
+/** 侧栏与顶栏分离：左列导航，右列顶栏 + 内容。 */
+import { useEffect } from "react";
+import { useLocation, useNavigate, Link } from "react-router-dom";
+import {
+  BarChart3,
+  FileText,
+  Layers,
+  Settings,
+  Activity,
+  LayoutDashboard,
+  ArrowLeft,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Separator } from "@/components/ui/separator";
-import { TopBar } from "@/components/TopBar";
-import { MorningBriefing } from "@/features/briefing/MorningBriefing";
 import { ToastBanner } from "@/components/ToastBanner";
-import { useAppStore } from "@/app/store";
+import { SidebarNavItem } from "@/components/SidebarNavItem";
+import { WindowDragRegion } from "@/components/WindowDragRegion";
+import { applyShellLayoutVars, MAC_SHELL } from "@/lib/shell-layout";
+import {
+  SETTINGS_SECTIONS,
+  consumeSettingsReturnPath,
+  parseSettingsSection,
+  saveSettingsReturnPath,
+} from "@/features/settings/settings-sections";
 
-const navItems = [
-  { to: "/", label: "行情", icon: BarChart3, end: true },
+const mainNavItems = [
+  { to: "/", label: "总览", icon: LayoutDashboard, end: true },
+  { to: "/workspace", label: "行情", icon: BarChart3, end: true },
   { to: "/reports", label: "报告", icon: FileText, end: false },
   { to: "/symbols", label: "品种", icon: Layers, end: false },
   { to: "/status", label: "状态", icon: Activity, end: false },
-  { to: "/settings", label: "设置", icon: Settings, end: false },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const { akshareOnline, jinshiOnline, jinshiCalendarReady, statusMessage } = useAppStore();
+  const navigate = useNavigate();
 
-  const online = akshareOnline;
-  const statusLabel = online
-    ? jinshiOnline
-      ? jinshiCalendarReady
-        ? "新浪 · 金十 · 日历"
-        : "新浪 · 金十"
-      : "新浪"
-    : "数据离线";
-  const onDashboard = location.pathname === "/" || location.pathname === "";
+  useEffect(() => {
+    applyShellLayoutVars();
+  }, []);
+
+  const onSettings = location.pathname === "/settings";
+  const settingsSection = parseSettingsSection(
+    new URLSearchParams(location.search).get("section")
+  );
+
+  const openSettings = () => {
+    saveSettingsReturnPath(`${location.pathname}${location.search}`);
+  };
+
+  const leaveSettings = () => {
+    navigate(consumeSettingsReturnPath());
+  };
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
-      <aside className="flex w-[220px] shrink-0 flex-col border-r border-border bg-background">
-        <div className="flex h-11 items-center px-4">
-          <span className="text-sm font-medium tracking-tight text-foreground/90">
-            ThisIsMyQuant
-          </span>
-        </div>
+    <div
+      className="grid h-screen bg-background text-foreground"
+      style={{
+        gridTemplateColumns: `${MAC_SHELL.sidebarExpanded}px minmax(0, 1fr)`,
+        gridTemplateRows: "var(--shell-chrome-h) minmax(0, 1fr)",
+      }}
+    >
+      {/* 左上：侧栏顶区（与右侧顶栏分离，为 macOS 信号灯留空） */}
+      <div
+        className="relative col-start-1 row-start-1 border-b border-r border-border bg-background"
+        aria-hidden
+      >
+        <WindowDragRegion />
+      </div>
 
-        <Separator />
-
-        <nav className="flex flex-1 flex-col gap-0.5 p-2">
-          {navItems.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-2.5 rounded-sm border-l-2 border-transparent py-2 pl-[10px] pr-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground",
-                  isActive && "border-l-primary bg-muted/40 text-foreground"
-                )
-              }
-            >
-              <Icon className="h-4 w-4 shrink-0 opacity-70" />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="border-t border-border p-4" title={statusMessage}>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className={cn("h-2 w-2 shrink-0 rounded-full", online ? "bg-up" : "bg-down")} />
-            <span className="truncate">{statusLabel}</span>
-          </div>
-        </div>
+      {/* 左下：导航 */}
+      <aside className="col-start-1 row-start-2 flex min-h-0 min-w-0 flex-col border-r border-border bg-background">
+        {onSettings ? (
+          <>
+            <div className="px-2 pt-2">
+              <button
+                type="button"
+                onClick={leaveSettings}
+                title="返回"
+                aria-label="返回"
+                className="flex w-full items-center gap-2 rounded-[5px] px-2 py-[5px] text-[13px] text-muted-foreground transition-colors hover:bg-accent/35 hover:text-foreground"
+              >
+                <ArrowLeft className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
+                <span>返回</span>
+              </button>
+            </div>
+            <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
+              {SETTINGS_SECTIONS.map(({ id, label, icon: Icon }) => {
+                const active = settingsSection === id;
+                return (
+                  <Link
+                    key={id}
+                    to={`/settings?section=${id}`}
+                    className={cn(
+                      "flex items-center gap-2 rounded-[5px] px-2 py-[5px] text-[13px] leading-none transition-colors",
+                      active
+                        ? "bg-accent/60 text-foreground"
+                        : "text-muted-foreground hover:bg-accent/35 hover:text-foreground"
+                    )}
+                  >
+                    <Icon className="h-[15px] w-[15px] shrink-0 opacity-80" strokeWidth={1.75} />
+                    <span className="truncate">{label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </>
+        ) : (
+          <>
+            <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2 pt-1">
+              {mainNavItems.map(({ to, label, icon, end }) => (
+                <SidebarNavItem key={to} to={to} label={label} icon={icon} end={end} />
+              ))}
+            </nav>
+            <div className="px-2 pb-3">
+              <SidebarNavItem
+                to="/settings?section=schedule"
+                label="设置"
+                icon={Settings}
+                end={false}
+                onClick={openSettings}
+              />
+            </div>
+          </>
+        )}
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar />
-        {onDashboard && <MorningBriefing />}
-        <main className="min-h-0 flex-1 overflow-hidden bg-background">{children}</main>
+      {/* 右上：顶栏（仅主内容区，不与侧栏贯通） */}
+      <div
+        className="relative col-start-2 row-start-1 min-w-0 border-b border-border bg-background"
+        data-tauri-drag-region
+      >
+        <WindowDragRegion />
       </div>
+
+      {/* 右下：页面内容 */}
+      <main className="col-start-2 row-start-2 min-h-0 min-w-0 overflow-hidden bg-background">
+        {children}
+      </main>
+
       <ToastBanner />
     </div>
   );

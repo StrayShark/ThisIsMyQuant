@@ -9,8 +9,8 @@ pub use akshare::AkshareClient;
 pub use feed::{feed_from_config, AksharePollFeed, MarketFeed};
 pub use jinshi::JinshiClient;
 pub use jinshi_calendar::{
-    fetch_calendar_range, CalendarFetchOptions, default_calendar_range,
-    default_calendar_range_from_today, DEFAULT_CALENDAR_DAYS_AHEAD,
+    default_calendar_range, default_calendar_range_from_today, fetch_calendar_range,
+    CalendarFetchOptions, DEFAULT_CALENDAR_DAYS_AHEAD,
 };
 pub use llm::LlmRouter;
 pub use overseas_futures::{fetch_overseas_quote, list_overseas_symbols};

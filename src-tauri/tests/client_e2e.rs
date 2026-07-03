@@ -19,7 +19,11 @@ async fn client_e2e_all_modules_and_llm_analysis() {
         return;
     }
 
-    let report = run_client_e2e_suite(&state, "rb0").await;
+    let symbols = ["rb0", "au0", "m0", "sc0", "ec0"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
+    let report = run_client_e2e_suite(&state, "rb0", &symbols).await;
     eprintln!("E2E modules:");
     for m in &report.modules {
         eprintln!(
@@ -35,6 +39,12 @@ async fn client_e2e_all_modules_and_llm_analysis() {
             a.trigger, a.report_id, a.content_len
         );
     }
+    for s in &report.symbol_checks {
+        eprintln!(
+            "  symbol {} sector={} bars={} context_bars={}",
+            s.symbol, s.sector, s.bars, s.context_bars
+        );
+    }
 
     for m in &report.modules {
         if m.module.starts_with("analysis_") && require_llm() {
@@ -43,5 +53,15 @@ async fn client_e2e_all_modules_and_llm_analysis() {
         assert!(m.ok, "module {} failed: {}", m.module, m.message);
     }
     assert!(report.ok, "client e2e suite failed");
-    assert_eq!(report.analyses.len(), 2, "expected tomorrow + short_term analyses");
+    assert_eq!(
+        report.analyses.len(),
+        2,
+        "expected tomorrow + short_term analyses"
+    );
+    assert_eq!(
+        report.symbol_checks.len(),
+        5,
+        "expected five sector symbol checks"
+    );
+    assert!(report.symbol_checks.iter().all(|s| s.ok));
 }

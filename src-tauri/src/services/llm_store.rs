@@ -14,16 +14,18 @@ pub fn resolve_encryption_key(db: &Database, env_key: &str) -> AppResult<String>
     db.get_or_create_app_secret(ENC_KEY_SECRET)
 }
 
-pub fn load_llm_providers(db: &Database, encryption_key: &str) -> AppResult<Vec<LlmProviderConfig>> {
+pub fn load_llm_providers(
+    db: &Database,
+    encryption_key: &str,
+) -> AppResult<Vec<LlmProviderConfig>> {
     let rows = db.list_llm_credentials()?;
     let mut out = Vec::new();
     for (provider, enc_key, base_url, model) in rows {
         let api_key = if enc_key.is_empty() {
             String::new()
         } else {
-            decrypt_value(&enc_key, encryption_key).map_err(|e| {
-                AppError::Msg(format!("decrypt llm key for {provider}: {e}"))
-            })?
+            decrypt_value(&enc_key, encryption_key)
+                .map_err(|e| AppError::Msg(format!("decrypt llm key for {provider}: {e}")))?
         };
         if let Some(cfg) = build_provider_config(&provider, &api_key, Some(&base_url), Some(&model))
         {
@@ -41,9 +43,8 @@ pub fn save_llm_provider(
     base_url: Option<&str>,
     model: Option<&str>,
 ) -> AppResult<LlmProviderConfig> {
-    let cfg = build_provider_config(provider, api_key, base_url, model).ok_or_else(|| {
-        AppError::Msg(format!("invalid or incomplete credential for {provider}"))
-    })?;
+    let cfg = build_provider_config(provider, api_key, base_url, model)
+        .ok_or_else(|| AppError::Msg(format!("invalid or incomplete credential for {provider}")))?;
     let enc = if cfg.api_key.is_empty() {
         String::new()
     } else {
@@ -98,11 +99,7 @@ pub fn maybe_import_llm_from_env_dev(
 
     cfg.llm_providers = load_llm_providers(db, &enc)?;
     if let Some(default) = crate::config::default_llm_provider_from_env_files() {
-        if cfg
-            .llm_providers
-            .iter()
-            .any(|p| p.name == default)
-        {
+        if cfg.llm_providers.iter().any(|p| p.name == default) {
             cfg.default_llm_provider = default;
         }
     } else if !cfg.llm_providers.is_empty()

@@ -20,8 +20,9 @@ async fn restart_market_poll(app: &AppHandle, state: &Arc<AppState>) {
     *state.market_poll.lock().await = None;
 
     let cfg = state.config().clone();
-    if !cfg.akshare_enabled || !cfg.akshare_realtime_enabled || cfg.watchlist.is_empty() {
-        log::info!("MarketPoll stopped (disabled or empty watchlist)");
+    let symbols = crate::engine::sectors::core_product_symbols();
+    if !cfg.akshare_enabled || !cfg.akshare_realtime_enabled || symbols.is_empty() {
+        log::info!("MarketPoll stopped (disabled or no symbols)");
         return;
     }
 
@@ -31,7 +32,7 @@ async fn restart_market_poll(app: &AppHandle, state: &Arc<AppState>) {
         feed,
         state.clone(),
         Some(state.anomaly.clone()),
-        cfg.watchlist.clone(),
+        symbols,
         cfg.realtime_poll_interval,
     ));
     *state.market_poll.lock().await = Some(poll);
@@ -65,7 +66,7 @@ async fn restart_news_poll(state: &Arc<AppState>) {
 
     let llm_snap = state.llm_snapshot();
     let deps = IngestDeps {
-        jinshi: &*jinshi,
+        jinshi: &jinshi,
         db: &state.db,
         llm: Some(&llm_snap),
         classify_cfg: &cfg.news_classify,

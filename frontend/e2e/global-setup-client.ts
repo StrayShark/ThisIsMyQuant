@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,8 +18,9 @@ function sleep(ms: number) {
 async function waitForReady() {
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (existsSync(READY_FILE)) {
-      try {
+    try {
+      const res = await fetch(`${E2E_HTTP}/health`);
+      if (res.ok && existsSync(READY_FILE)) {
         const data = JSON.parse(readFileSync(READY_FILE, "utf8")) as {
           ready?: boolean;
           llm_providers?: string[];
@@ -27,13 +28,7 @@ async function waitForReady() {
         if (data.ready && (data.llm_providers?.length ?? 0) > 0) {
           return data;
         }
-      } catch {
-        /* retry */
       }
-    }
-    try {
-      const res = await fetch(`${E2E_HTTP}/health`);
-      if (res.ok) return JSON.parse(readFileSync(READY_FILE, "utf8"));
     } catch {
       /* not up yet */
     }
@@ -45,6 +40,7 @@ async function waitForReady() {
 export default async function globalSetup() {
   console.log("[e2e-client] 同步 .env …");
   execSync("bash scripts/sync-env.sh", { cwd: ROOT, stdio: "inherit" });
+  rmSync(READY_FILE, { force: true });
 
   console.log("[e2e-client] 启动 Tauri 客户端 …");
   tauriProc = spawn("pnpm", ["tauri:dev"], {
@@ -75,7 +71,7 @@ export default async function globalSetup() {
   console.log("[e2e-client] 客户端就绪:", ready);
 }
 
-export async function globalTeardown() {
+export async function stopClientProcess() {
   const pid = process.env.TAURI_E2E_PID;
   if (!pid) return;
   console.log("[e2e-client] 停止 Tauri 进程", pid);

@@ -24,9 +24,6 @@ interface AppState extends MarketStatus {
   setCurrentSymbol: (s: string) => void;
   currentInterval: Interval;
   setCurrentInterval: (i: Interval) => void;
-  watchlist: string[];
-  setWatchlist: (symbols: string[]) => void;
-  toggleWatch: (s: string) => void;
   newsFocus: NewsFocus | null;
   setNewsFocus: (focus: NewsFocus | null) => void;
   toastMessage: string | null;
@@ -43,14 +40,6 @@ export const useAppStore = create<AppState>((set) => ({
     ),
   currentInterval: "1d",
   setCurrentInterval: (i) => set({ currentInterval: i }),
-  watchlist: ["rb2510", "au2512", "IF2512"],
-  setWatchlist: (symbols) => set({ watchlist: symbols }),
-  toggleWatch: (s) =>
-    set((st) => ({
-      watchlist: st.watchlist.includes(s)
-        ? st.watchlist.filter((x) => x !== s)
-        : [...st.watchlist, s],
-    })),
 
   newsFocus: null,
   setNewsFocus: (focus) => set({ newsFocus: focus }),

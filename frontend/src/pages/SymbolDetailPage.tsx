@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, BarChart3, Sparkles } from "lucide-react";
 import { api } from "@/api/client";
 import { useAppStore } from "@/app/store";
-import { PageHeader } from "@/components/PageHeader";
 import { AnalysisTimeline, defaultTimelineSteps } from "@/components/AnalysisTimeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AiPanel } from "@/features/analysis/AiPanel";
 import { MiniChart } from "@/features/symbol/MiniChart";
 import { ReportTimeline } from "@/features/symbol/ReportTimeline";
-import { getFuturesProduct } from "@/data/futures";
 import { ensureMarketSubscription } from "@/lib/market-subscribe";
 import type { Interval } from "@/types";
 
@@ -29,7 +27,6 @@ export function SymbolDetailPage() {
   const navigate = useNavigate();
   const setCurrentSymbol = useAppStore((s) => s.setCurrentSymbol);
   const symbol = (routeSymbol ?? "RB0").toUpperCase();
-  const product = getFuturesProduct(symbol);
   const [analyzing, setAnalyzing] = useState(false);
 
   const { data: ctx } = useQuery({
@@ -57,7 +54,7 @@ export function SymbolDetailPage() {
             size="sm"
             onClick={() => {
               setCurrentSymbol(symbol);
-              navigate("/");
+              navigate("/workspace");
             }}
           >
             <BarChart3 className="mr-1 h-4 w-4" />
@@ -81,14 +78,6 @@ export function SymbolDetailPage() {
             {analyzing ? "分析中…" : "生成分析"}
           </Button>
         </div>
-
-        <PageHeader
-          title={product?.name ?? (ctx?.product_name as string) ?? symbol}
-          description={
-            (ctx?.description as string) ??
-            `${symbol} · ${product?.exchange ?? ""} · ${(ctx?.name as string) ?? ""}`
-          }
-        />
 
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="space-y-4 lg:col-span-2">

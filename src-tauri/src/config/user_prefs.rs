@@ -2,11 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use super::Config;
 
-/// 应用内可配置项（默认值内置，持久化于 SQLite，不依赖 .env）。
+/// 应用内可配置项（默认值内置，持久化于 data/user_preferences.json，不依赖 .env）。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct UserPreferences {
-    pub watchlist: Vec<String>,
     pub schedule_enabled: bool,
     pub schedule_interval_hours: u64,
     pub schedule_analysis_trigger: String,
@@ -31,16 +30,15 @@ pub struct UserPreferences {
     pub retention_days_ticks: i64,
     pub calendar_reminder_enabled: bool,
     pub calendar_reminder_mins: u64,
+    /// green_up | red_up
+    pub quote_color_scheme: String,
+    /// dark | light | system | cursor | matrix
+    pub theme: String,
 }
 
 impl Default for UserPreferences {
     fn default() -> Self {
         Self {
-            watchlist: vec![
-                "rb2510".into(),
-                "au2512".into(),
-                "if2512".into(),
-            ],
             schedule_enabled: true,
             schedule_interval_hours: 6,
             schedule_analysis_trigger: "scheduled".into(),
@@ -65,20 +63,17 @@ impl Default for UserPreferences {
             retention_days_ticks: 14,
             calendar_reminder_enabled: true,
             calendar_reminder_mins: 30,
+            quote_color_scheme: "green_up".into(),
+            theme: "cursor".into(),
         }
     }
 }
 
 impl UserPreferences {
     pub fn normalize(mut self) -> Self {
-        self.watchlist = self
-            .watchlist
-            .into_iter()
-            .map(|s| s.trim().to_lowercase())
-            .filter(|s| !s.is_empty())
-            .collect();
         self.schedule_interval_hours = self.schedule_interval_hours.clamp(1, 168);
-        self.schedule_analysis_trigger = normalize_analysis_trigger(&self.schedule_analysis_trigger);
+        self.schedule_analysis_trigger =
+            normalize_analysis_trigger(&self.schedule_analysis_trigger);
         self.daily_briefing_hour = self.daily_briefing_hour.min(23);
         self.realtime_poll_interval = self.realtime_poll_interval.clamp(1.0, 3600.0);
         self.jinshi_poll_interval = self.jinshi_poll_interval.clamp(30.0, 86400.0);
@@ -86,11 +81,20 @@ impl UserPreferences {
         self.anomaly_price_pct = self.anomaly_price_pct.clamp(0.1, 50.0);
         self.anomaly_window_secs = self.anomaly_window_secs.clamp(60, 86400);
         self.anomaly_cooldown_secs = self.anomaly_cooldown_secs.clamp(60, 86400);
+        self.calendar_reminder_mins = self.calendar_reminder_mins.clamp(1, 1440);
+        if !matches!(self.quote_color_scheme.as_str(), "green_up" | "red_up") {
+            self.quote_color_scheme = "green_up".into();
+        }
+        if !matches!(
+            self.theme.as_str(),
+            "dark" | "light" | "system" | "cursor" | "matrix"
+        ) {
+            self.theme = "cursor".into();
+        }
         self
     }
 
     pub fn apply_to(&self, cfg: &mut Config) {
-        cfg.watchlist = self.watchlist.clone();
         cfg.schedule_enabled = self.schedule_enabled;
         cfg.schedule_interval_hours = self.schedule_interval_hours;
         cfg.schedule_analysis_trigger = self.schedule_analysis_trigger.clone();
@@ -119,7 +123,6 @@ impl UserPreferences {
 
     pub fn from_config(cfg: &Config) -> Self {
         Self {
-            watchlist: cfg.watchlist.clone(),
             schedule_enabled: cfg.schedule_enabled,
             schedule_interval_hours: cfg.schedule_interval_hours,
             schedule_analysis_trigger: cfg.schedule_analysis_trigger.clone(),
@@ -144,6 +147,8 @@ impl UserPreferences {
             retention_days_ticks: cfg.retention_days_ticks,
             calendar_reminder_enabled: cfg.calendar_reminder_enabled,
             calendar_reminder_mins: cfg.calendar_reminder_mins,
+            quote_color_scheme: "green_up".into(),
+            theme: "cursor".into(),
         }
     }
 }
@@ -154,15 +159,5 @@ fn normalize_analysis_trigger(raw: &str) -> String {
             raw.trim().to_string()
         }
         _ => "scheduled".into(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_watchlist_not_empty() {
-        assert_eq!(UserPreferences::default().watchlist.len(), 3);
     }
 }
