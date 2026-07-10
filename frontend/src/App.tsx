@@ -15,9 +15,19 @@ import { ReportDetailPage } from "@/pages/ReportDetailPage";
 import { ReportComparePage } from "@/pages/ReportComparePage";
 import { SymbolsPage } from "@/pages/SymbolsPage";
 import { SymbolDetailPage } from "@/pages/SymbolDetailPage";
+import { FactorCenterPage } from "@/pages/FactorCenterPage";
+import { NewsDecisionPage } from "@/pages/NewsDecisionPage";
+import { MacroCalendarPage } from "@/pages/MacroCalendarPage";
+import { AnomalyCenterPage } from "@/pages/AnomalyCenterPage";
+import { CopilotPage } from "@/pages/CopilotPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { StatusPage } from "@/pages/StatusPage";
 import { LandingPage } from "@/pages/LandingPage";
+import { SimulationPage } from "@/pages/SimulationPage";
+import { TradingReviewPage } from "@/pages/TradingReviewPage";
+import { MarketReplayPage } from "@/pages/MarketReplayPage";
+import { LocalDatabasePage } from "@/pages/LocalDatabasePage";
+import { AStockPage } from "@/pages/AStockPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +50,12 @@ function MainAppRoutes() {
       <Routes>
         <Route path="/" element={<OverviewPage />} />
         <Route path="/workspace" element={<DashboardPage />} />
+        <Route path="/stocks" element={<AStockPage />} />
+        <Route path="/factors" element={<FactorCenterPage />} />
+        <Route path="/news" element={<NewsDecisionPage />} />
+        <Route path="/calendar" element={<MacroCalendarPage />} />
+        <Route path="/anomalies" element={<AnomalyCenterPage />} />
+        <Route path="/copilot" element={<CopilotPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/reports/compare" element={<ReportComparePage />} />
         <Route path="/reports/:id" element={<ReportDetailPage />} />
@@ -47,6 +63,10 @@ function MainAppRoutes() {
         <Route path="/symbols/:symbol" element={<SymbolDetailPage />} />
         <Route path="/status" element={<StatusPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/simulation" element={<SimulationPage />} />
+        <Route path="/review" element={<TradingReviewPage />} />
+        <Route path="/replay" element={<MarketReplayPage />} />
+        <Route path="/database" element={<LocalDatabasePage />} />
       </Routes>
     </AppShell>
   );

@@ -19,15 +19,16 @@ use reqwest::Client;
 use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 
-use adapters::{feed_from_config, AkshareClient, JinshiClient, LlmRouter};
+use adapters::{feed_from_config, AkshareClient, AkshareStockProvider, JinshiClient, LlmRouter};
 use config::{load_user_preferences, Config};
 use db::Database;
 use engine::anomaly::{AnomalyConfig, AnomalyDetector};
 use services::{
     ingest_poll, new_schedule_status, new_status_handle, spawn_calendar_reminder,
-    spawn_daily_briefing, spawn_data_maintenance, spawn_history_backfill, AnomalyWatcher,
-    BatchAnalysisHandle, IngestDeps, LiquidityJobHandle, MarketPollHandle, NewsPollHandle,
-    ScheduleHandle,
+    spawn_daily_briefing, spawn_data_maintenance, spawn_history_backfill, spawn_stock_data_sync,
+    spawn_stock_paper_eod, AnomalyWatcher, BatchAnalysisHandle, IngestDeps, LiquidityJobHandle,
+    MarketPollHandle, NewsPollHandle, ScheduleHandle, SimTradingService, StockDataSyncService,
+    StockPaperTradingService,
 };
 use state::AppState;
 
@@ -76,6 +77,7 @@ async fn bootstrap(app: tauri::AppHandle) {
 
     let akshare = AkshareClient::new(http.clone());
     let akshare_ready = config.akshare_enabled && akshare.is_ready();
+    let stock_provider = AkshareStockProvider::new(http.clone());
 
     let jinshi = Arc::new(Mutex::new(JinshiClient::new(http.clone(), &config)));
     if config.jinshi_enabled {
@@ -141,6 +143,18 @@ async fn bootstrap(app: tauri::AppHandle) {
         let _ = db.save_contracts(&contracts);
     }
 
+    let quote_cache: Arc<std::sync::RwLock<crate::services::QuoteCache>> =
+        Arc::new(std::sync::RwLock::new(crate::services::QuoteCache::new()));
+    let sim_service = Arc::new(SimTradingService::new(db.clone(), quote_cache.clone()));
+    if let Err(e) = sim_service.init_defaults() {
+        log::error!("sim trading init defaults: {e}");
+    }
+    let stock_sync = Arc::new(StockDataSyncService::new(
+        db.clone(),
+        stock_provider.clone(),
+    ));
+    let stock_paper = Arc::new(StockPaperTradingService::new(db.clone()));
+
     let schedule_status = new_schedule_status(
         config.schedule_interval_hours.max(1),
         config.schedule_enabled,
@@ -159,6 +173,7 @@ async fn bootstrap(app: tauri::AppHandle) {
         user_preferences,
         db,
         akshare,
+        stock_provider,
         jinshi,
         llm,
         market_poll: market_poll_slot.clone(),
@@ -170,7 +185,11 @@ async fn bootstrap(app: tauri::AppHandle) {
         backfill_status,
         feed_source: feed_source.clone(),
         batch_analysis: BatchAnalysisHandle::new(),
-        quote_cache: Arc::new(std::sync::RwLock::new(crate::services::QuoteCache::new())),
+        quote_cache,
+        sim_trading: sim_service,
+        stock_sync,
+        stock_paper,
+        replay_runner: Arc::new(RwLock::new(None)),
     });
 
     let poll_symbols = crate::engine::sectors::core_product_symbols();
@@ -196,6 +215,8 @@ async fn bootstrap(app: tauri::AppHandle) {
     spawn_data_maintenance(state.clone());
     spawn_calendar_reminder(app.clone(), state.clone());
     spawn_daily_briefing(app.clone(), state.clone(), state.schedule_status.clone());
+    spawn_stock_paper_eod(state.clone());
+    spawn_stock_data_sync(state.clone(), app.clone());
 
     app.manage(state.clone());
 
@@ -264,7 +285,62 @@ pub fn run() {
             commands::trigger_data_fetch,
             commands::trigger_comprehensive_analysis,
             commands::get_schedule_status,
+            commands::generate_trade_review,
             commands::run_client_e2e,
+            commands::list_sim_accounts,
+            commands::create_sim_account,
+            commands::reset_sim_account,
+            commands::get_sim_account_snapshot,
+            commands::list_sim_positions,
+            commands::list_sim_orders,
+            commands::list_sim_trades,
+            commands::list_sim_equity_curve,
+            commands::get_sim_performance,
+            commands::place_sim_order,
+            commands::cancel_sim_order,
+            commands::estimate_sim_order,
+            commands::list_sim_contract_rules,
+            commands::save_sim_contract_rule,
+            commands::delete_sim_contract_rule,
+            commands::list_sim_risk_rules,
+            commands::save_sim_risk_rule,
+            commands::delete_sim_risk_rule,
+            commands::force_liquidate,
+            commands::save_sim_journal_entry,
+            commands::list_sim_journal_entries,
+            commands::start_market_replay,
+            commands::stop_market_replay,
+            commands::step_market_replay,
+            commands::get_replay_state,
+            commands::get_replay_klines,
+            commands::get_database_summary,
+            commands::backup_database,
+            // A 股
+            commands::list_stock_symbols,
+            commands::get_a_stock_dashboard,
+            commands::get_stock_klines,
+            commands::get_stock_detail,
+            commands::list_stock_industries,
+            commands::get_stock_industry_detail,
+            commands::run_stock_screener,
+            commands::save_stock_screen,
+            commands::list_stock_screen_templates,
+            commands::delete_stock_screen_template,
+            commands::summarize_stock_screen,
+            commands::list_stock_financials,
+            commands::list_stock_watchlists,
+            commands::save_stock_watchlist,
+            commands::delete_stock_watchlist,
+            commands::trigger_stock_data_sync,
+            // A 股模拟组合
+            commands::list_stock_paper_accounts,
+            commands::create_stock_paper_account,
+            commands::get_stock_paper_portfolio,
+            commands::place_stock_paper_order,
+            commands::cancel_stock_paper_order,
+            commands::estimate_stock_paper_order,
+            commands::generate_stock_summary,
+            commands::generate_stock_portfolio_review,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

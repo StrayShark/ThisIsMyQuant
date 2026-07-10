@@ -77,6 +77,14 @@ impl MarketPollHandle {
                             emit_kline_updates(&app, &mut agg, &tick);
                             let forming_1d = agg.current_bar(&tick.symbol, "1d");
                             state.apply_tick_to_quotes(&tick, forming_1d).await;
+                            if let Ok(affected) = state
+                                .sim_trading
+                                .on_price_update(&tick.symbol, tick.last_price)
+                            {
+                                for account_id in affected {
+                                    let _ = crate::services::emit_sim_update(&app, &account_id);
+                                }
+                            }
                             if let Some(q) = state
                                 .quote_cache
                                 .read()
@@ -180,6 +188,10 @@ fn emit_quote_update(app: &AppHandle, q: &crate::models::RealtimeQuote) {
             msg_type: "quote".into(),
             symbol: q.symbol.clone(),
             last_price: q.last_price,
+            bid_price: q.bid_price,
+            ask_price: q.ask_price,
+            bid_volume: q.bid_volume,
+            ask_volume: q.ask_volume,
             prev_close: q.prev_close,
             change_pct: q.change_pct,
             timestamp: q.timestamp.clone(),

@@ -1,419 +1,238 @@
-# 国内期货多维度分析与资讯分类 — 产品设计
+# 国内期货多维度分析与资讯分类设计
 
-> 版本：v1.0 · 2026-06-25  
-> 状态：部分已实现（Rust 核心）  
-> 关联：`src-tauri/src/engine/sectors.rs`、`src-tauri/src/engine/analysis.rs`
+> 版本：v1.1 · 2026-07-06  
+> 状态：与“模拟盘 + 本地数据库 + 专业工作台”规划对齐  
+> 关联代码：`src-tauri/src/engine/sectors.rs`、`src-tauri/src/engine/dimensions.rs`、`src-tauri/src/services/analysis_runner.rs`
 
 ---
 
 ## 1. 目标
 
-1. 为每个流动性合格的期货品种建立 **可配置分析维度**（季节性、天气、海外上游、财报等）。
-2. 实时金十资讯 **自动分类** 到维度 + 品种，供 LLM 分析与历史检索。
-3. 期货列表 **仅保留高流动性品种**（量化筛选 + 人工白名单）。
-4. 分析结果结构化落库，支持按维度回溯与报告生成。
+本设计定义 ThisIsMyQuant 如何把国内期货主力行情、金十资讯、财经日历、产业因子、模拟交易记录和 LLM 报告组织成可解释的分析与复盘系统。
 
----
+核心目标：
 
-## 2. 核心分析因素（通用框架）
+1. 用五大商品板块组织产品体验：黑色建材、有色贵金属、农产品软商品、能源化工、航运运价。
+2. 每个主流期货品种使用中文名和主力连续数据。
+3. 为每个品种配置可解释维度，如库存、供需、宏观、外盘、政策、季节性。
+4. 将金十资讯自动分类到板块、品种和维度，进入决策流和报告上下文。
+5. 将模拟交易计划、成交、持仓、资金曲线和复盘记录关联到行情与资讯上下文。
+6. 明确数据质量，区分实时、历史、参考、估算、待更新和错误。
+7. 所有 LLM 报告保留免责声明：仅供参考，不构成投资建议。
 
-| 维度 code | 名称 | 适用说明 | 典型数据源 |
+v1 不纳入金融期货默认产品范围。
+
+## 2. 板块与品种
+
+| 板块 | 代表品种 | 主要分析因子 |
+|---|---|---|
+| 黑色建材 | 螺纹钢、热卷、铁矿石、焦炭、焦煤、玻璃、纯碱 | 地产/基建、钢厂利润、铁水产量、港口库存、双焦供给、政策。 |
+| 有色贵金属 | 沪铜、沪铝、沪锌、沪镍、氧化铝、碳酸锂、黄金、白银 | 美元利率、库存、冶炼利润、新能源需求、避险情绪。 |
+| 农产品软商品 | 豆粕、豆油、棕榈油、玉米、白糖、棉花、苹果、生猪 | 天气、进口到港、压榨利润、库存消费比、养殖利润。 |
+| 能源化工 | 原油、燃料油、沥青、PTA、甲醇、聚丙烯、橡胶、尿素 | 原油、装置开工、化工库存、下游利润、进出口窗口。 |
+| 航运运价 | 集运欧线 | 地缘扰动、绕航、舱位供给、欧美进口需求。 |
+
+品种目录由 `engine/sectors.rs` 维护，应包含：
+
+- `code`：品种代码。
+- `symbol`：主力连续符号，如 `RB0`。
+- `name`：中文名，如“螺纹钢”。
+- `exchange`：交易所。
+- `sector`：五大板块之一。
+- `dimensions`：默认分析维度。
+- `liquidity_tier`：`core/watch/excluded`。
+
+## 3. 分析维度
+
+| 维度 code | 名称 | 适用说明 | 典型来源 |
 |---|---|---|---|
-| `seasonality` | 季节性 | 农产品/能源消费旺季、检修季 | 历史价量、日历事件 |
-| `weather` | 天气 | 产区降水/霜冻/干旱、航运干扰 | 气象 API、新闻 |
-| `overseas_upstream` | 海外上游 | 原油、LME、CBOT、铁矿发运 | 外盘行情、进口数据 |
-| `domestic_supply` | 国内供给 | 开工率、产量、库存、检修 | 产业周报、新闻 |
-| `demand` | 需求 | 地产/基建/消费/出口 | 宏观数据、新闻 |
-| `inventory` | 库存 | 社会库存、港口库存、仓单 | 库存周报 |
-| `spread_arb` | 价差套利 | 跨期/跨品种价差、进口利润 | 行情计算 |
+| `technical` | 技术面 | 趋势、均线、支撑阻力、波动 | K 线与指标 |
+| `flow` | 资金持仓 | 成交、持仓、仓单、主力动向 | 交易所/公开数据，后续增强 |
+| `macro` | 国内宏观 | PMI、社融、LPR、政策 | 日历、新闻 |
+| `overseas_finance` | 海外金融 | CPI、非农、FOMC、美元、美债 | 金十日历、外盘参考 |
+| `overseas_upstream` | 海外上游 | 原油、LME、CBOT、铁矿发运 | 外盘、资讯 |
+| `domestic_supply` | 国内供给 | 开工率、产量、检修 | 产业数据、新闻 |
+| `demand` | 需求 | 地产、基建、消费、出口 | 宏观、新闻 |
+| `inventory` | 库存 | 社会库存、港口库存、仓单 | 公开数据、资讯 |
+| `spread_arb` | 价差套利 | 跨期、跨品种、进口利润 | 行情计算 |
 | `policy` | 政策监管 | 收储抛储、环保限产、关税 | 新闻 |
-| `macro` | 国内宏观 | 中国 PMI、社融、LPR、政策预期 | 宏观数据、央行、统计局 |
-| `overseas_finance` | 国外金融环境 | 美国 CPI/PPI/PCE、非农、美联储/FOMC 利率决策、美债与美元指数 | 金十宏观快讯、海外日历 |
+| `weather` | 天气 | 干旱、降雨、霜冻、风暴 | 新闻、气象源 |
+| `seasonality` | 季节性 | 种植、收割、消费旺季、检修 | 历史与日历 |
 | `geopolitics` | 地缘 | 制裁、航道、战争 | 新闻 |
-| `earnings` | 企业财报 | 龙头矿商/钢企/油企业绩指引 | 公告、新闻 |
-| `technical` | 技术面 | 趋势、关键位、持仓量 | K 线（已有） |
-| `flow` | 资金持仓 | 主力净多净空、仓单变化 | 交易所持仓（后续） |
+| `earnings` | 企业财报 | 矿商、钢企、油企指引 | 公告、新闻 |
 
-**板块默认维度权重**（分析 prompt 按此排序）：
+板块默认维度权重：
 
 | 板块 | 优先维度 |
 |---|---|
-| 黑色建材 | demand, domestic_supply, inventory, overseas_finance, overseas_upstream, policy |
-| 有色贵金属 | macro, overseas_finance, overseas_upstream, inventory, earnings, geopolitics |
-| 农产品 | weather, seasonality, overseas_finance, overseas_upstream, inventory, demand |
-| 能源化工 | overseas_upstream, overseas_finance, domestic_supply, inventory, spread_arb, policy |
-| 航运 | geopolitics, demand, overseas_finance, seasonality, overseas_upstream |
-| 金融 | macro, overseas_finance, policy, flow, technical |
+| 黑色建材 | demand, domestic_supply, inventory, overseas_upstream, policy, technical |
+| 有色贵金属 | overseas_finance, macro, overseas_upstream, inventory, earnings, geopolitics |
+| 农产品软商品 | weather, seasonality, overseas_upstream, inventory, demand, spread_arb |
+| 能源化工 | overseas_upstream, domestic_supply, inventory, spread_arb, policy, overseas_finance |
+| 航运运价 | geopolitics, demand, seasonality, overseas_finance, overseas_upstream |
 
----
+## 4. 专业工作台数据模型
 
-## 3. 品种级分析维度配置
+`get_professional_dashboard` 返回面向 UI 的聚合视图：
 
-在 `src-tauri/src/engine/sectors.rs` 与 `dimensions.rs` 维护品种与维度：
+| 模块 | 数据含义 | 来源 |
+|---|---|---|
+| 决策流 | 行情、资讯、日历、异动、报告节点 | SQLite + 服务状态 |
+| 因子快照 | 品种因子方向、强度、置信度、质量 | 维度事实、行情、资讯 |
+| 异动信号 | 涨跌、波动、成交、数据异常 | 行情缓存、anomaly_watcher |
+| 报告工作流 | 待生成、生成中、已完成、失败 | reports 与任务状态 |
+| 外盘联动 | 海外参考品种与影响方向 | Yahoo/外盘适配器 |
+| 模拟账户 | 权益、持仓风险、今日盈亏、待处理委托 | sim_accounts / sim_positions |
 
-```rust
-pub struct AnalysisDimension {
-    pub code: &'static str,
-    pub label: &'static str,
-    pub keywords: &'static [&'static str],
-    pub prompt_hint: &'static str,
-}
+该聚合视图服务于总览、因子、资讯和异动页面。新增 UI 卡片应优先扩展聚合视图，而不是在前端拼多个裸接口。
 
-pub struct FutureProduct {
-    pub code: &'static str,
-    pub symbol: &'static str,
-    pub name: &'static str,
-    pub exchange: &'static str,
-    pub dimensions: &'static [&'static str],
-    pub liquidity_tier: &'static str, // "core" | "watch" | "excluded"
-}
+## 5. 资讯分类 Pipeline
+
+```
+金十 poll
+  → news_items 去重入库
+  → 板块/品种/维度规则分类
+  → 低置信度可选 LLM 分类
+  → news_classifications
+  → 决策流 / 因子快照 / LLM Prompt
 ```
 
-### 3.1 示例：螺纹钢 RB0
+### 5.1 规则分类
 
-| 维度 | 关键词示例 |
+分类得分由以下信号组成：
+
+| 信号 | 示例 |
 |---|---|
-| demand | 地产、基建、开工率、销售面积 |
-| domestic_supply | 铁水、高炉、钢厂、减产 |
-| inventory | 社会库存、厂库、五大材 |
-| overseas_upstream | 铁矿、普氏、发运、澳洲、巴西 |
-| policy | 环保限产、平控、碳排放 |
-| spread_arb | 卷螺差、期现基差 |
+| 金十 category | 黑色系、有色金属、农产品、能源化工、航运。 |
+| 品种关键词 | 螺纹、铁矿、铜、豆粕、原油、集运等。 |
+| 维度关键词 | 库存、开工、降雨、FOMC、美元、检修、基差。 |
+| 时间权重 | 越新的资讯优先进入决策流。 |
 
-### 3.2 示例：豆粕 M0
+规则分类必须可解释，保存命中的 symbol、dimension、confidence、method。
 
-| 维度 | 关键词示例 |
-|---|---|
-| weather | 美国中西部、巴西降雨、干旱 |
-| seasonality | 种植进度、收割、压榨旺季 |
-| overseas_upstream | CBOT、美豆、巴西大豆、到港 |
-| inventory | 港口库存、油厂库存 |
-| demand | 养殖、生猪、饲料 |
-| spread_arb | 豆菜粕价差、进口大豆榨利 |
+### 5.2 LLM 分类
 
-完整品种表见附录 A（v1 按五大板块保留 **27 个 core**，暂不补充金融期货）。
+当规则低置信或多标签冲突时，可批量调用小模型输出 JSON：
 
----
-
-## 4. 流动性筛选（仅保留高流动性品种）
-
-### 4.1 规则
-
-每日收盘后（或启动时）对 `*0` 主力连续计算 **20 日滚动指标**：
-
-```
-liquidity_score = 0.5 * norm(volume_20d) + 0.5 * norm(oi_proxy_20d)
-```
-
-- `volume_20d`：20 日日均成交量（手）
-- `oi_proxy_20d`：若无持仓数据，用 `volume * turnover` 或最近日 K `volume` 峰值代理
-
-**准入门槛（建议初值，可配置）：**
-
-| 指标 | 阈值 |
-|---|---|
-| 20 日日均成交量 | ≥ 5,000 手（金融/贵金属可单独设） |
-| 20 日日均成交额 | ≥ 5 亿元（小合约如 TS 除外） |
-| 连续 5 日零成交 | 自动 excluded |
-
-**Tier：**
-
-- `core`：通过门槛 → 出现在 UI 列表、默认 watchlist 候选
-- `watch`：边缘流动性 → 可搜索但不默认展示
-- `excluded`：不展示、不分析
-
-### 4.2 建议保留 core 列表（27）
-
-剔除流动性长期偏弱或高度重叠品种：**FG0 玻璃、SA0 纯碱、AO0 氧化铝、UR0 尿素** 等进入 watch 或 excluded（以实际回测为准）。金融期货暂不进入 v1 产品目录。
-
-### 4.3 实现位置
-
-```
-src-tauri/src/engine/liquidity.rs     # 计算 + tier
-src-tauri/src/services/liquidity_job.rs  # 日更任务
-contracts 表增加 liquidity_tier, liquidity_score, scored_at
-```
-
----
-
-## 5. 资讯分类 pipeline
-
-```
-金十 poll → news_items 入库 → 规则分类 → (低置信) LLM 分类 → news_dimensions 关联
-                                    ↓
-                            分析时按 symbol + dimension 取 Top-N
-```
-
-### 5.1 规则分类（第一层，零成本）
-
-```rust
-fn classify_rule(news: &NewsItem, product: &FutureProduct) -> Vec<(Dimension, f32)> {
-    // 1. 板块 jin10 category_id 命中 → +0.3
-    // 2. 品种 keywords 命中 title/summary → +0.5
-    // 3. 各 dimension.keywords 命中 → +0.4 each
-    // 返回 score >= 0.5 的维度
-}
-```
-
-### 5.2 LLM 分类（第二层，批量）
-
-对规则未命中或 multi-label 的资讯，每 5 分钟批量调用：
-
-**System：** 你是期货资讯分类器，只输出 JSON。
-
-**User：**
-```json
-{
-  "news": {"id": "...", "title": "...", "summary": "..."},
-  "candidates": [
-    {"symbol": "RB0", "dimensions": ["demand", "inventory", ...]},
-    ...
-  ]
-}
-```
-
-**Output schema：**
 ```json
 {
   "labels": [
-    {"symbol": "RB0", "dimension": "demand", "confidence": 0.85, "reason": "..."}
+    {
+      "symbol": "RB0",
+      "dimension": "demand",
+      "confidence": 0.85,
+      "reason": "新闻提到地产开工和钢材需求"
+    }
   ]
 }
 ```
 
-- 模型：`doubao-lite` / 小模型即可，temperature=0
-- 批量 size：10 条/请求
+LLM 分类结果只作为辅助，不覆盖高置信规则结果；所有结果必须可回溯。
 
-### 5.3 去重
+## 6. 因子快照
 
-- `content_hash = sha256(normalize(title + summary))`
-- 24h 内重复 hash 跳过
+因子快照用于解释“为什么这个品种值得看”。建议字段：
 
----
-
-## 6. 数据库设计
-
-### 6.1 新增表
-
-```sql
--- 维度字典
-CREATE TABLE analysis_dimensions (
-    code TEXT PRIMARY KEY,
-    label TEXT NOT NULL,
-    description TEXT
-);
-
--- 品种-维度配置（也可继续放 sectors 代码里，DB 做 override）
-CREATE TABLE product_dimensions (
-    symbol TEXT NOT NULL,
-    dimension_code TEXT NOT NULL,
-    keywords TEXT,           -- JSON array
-    prompt_hint TEXT,
-    PRIMARY KEY (symbol, dimension_code)
-);
-
--- 资讯持久化
-CREATE TABLE news_items (
-    id TEXT PRIMARY KEY,
-    source TEXT DEFAULT 'jin10',
-    category_id INTEGER,
-    title TEXT NOT NULL,
-    summary TEXT,
-    url TEXT,
-    display_time TEXT NOT NULL,
-    content_hash TEXT UNIQUE,
-    raw_json TEXT,
-    ingested_at TEXT NOT NULL
-);
-CREATE INDEX idx_news_time ON news_items(display_time);
-CREATE INDEX idx_news_hash ON news_items(content_hash);
-
--- 资讯分类结果
-CREATE TABLE news_classifications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    news_id TEXT NOT NULL REFERENCES news_items(id),
-    symbol TEXT NOT NULL,
-    dimension_code TEXT NOT NULL,
-    confidence REAL NOT NULL,
-    method TEXT NOT NULL,    -- 'rule' | 'llm'
-    created_at TEXT NOT NULL,
-    UNIQUE(news_id, symbol, dimension_code)
-);
-CREATE INDEX idx_nc_symbol_dim ON news_classifications(symbol, dimension_code, created_at);
-
--- 流动性快照
-CREATE TABLE liquidity_snapshots (
-    symbol TEXT NOT NULL,
-    scored_at TEXT NOT NULL,
-    volume_20d REAL,
-    turnover_20d REAL,
-    score REAL,
-    tier TEXT,
-    PRIMARY KEY (symbol, scored_at)
-);
-
--- 维度事实摘录（LLM 从资讯/分析中抽取的结构化要点，可选 Phase 2）
-CREATE TABLE dimension_facts (
-    id TEXT PRIMARY KEY,
-    symbol TEXT NOT NULL,
-    dimension_code TEXT NOT NULL,
-    fact TEXT NOT NULL,
-    source_news_id TEXT,
-    source_report_id TEXT,
-    valid_until TEXT,
-    created_at TEXT NOT NULL
-);
-```
-
-### 6.2 reports 表扩展
-
-```sql
-ALTER TABLE reports ADD COLUMN dimension_summary TEXT;  -- JSON: {dimension: bullet_points}
-ALTER TABLE reports ADD COLUMN news_ids TEXT;           -- JSON array，引用的资讯 id
-```
-
----
-
-## 7. LLM 通信设计
-
-### 7.1 三阶段调用
-
-| 阶段 | 触发 | 模型 | 输出 |
-|---|---|---|---|
-| **C1 资讯分类** | news_poll 每批 | 小模型 | JSON labels |
-| **C2 维度摘要** | 分析前 | 中模型 | 每维度 2-3 条要点 JSON |
-| **C3 完整报告** | daily/realtime/manual | 主模型 | Markdown 报告 + dimension_summary JSON |
-
-### 7.2 C3 Prompt 结构（升级现有 `render_prompt`）
-
-```
-[System] 现有 SYSTEM_PROMPT + 输出格式要求
-
-[User]
-## 品种与维度
-{product_name} ({symbol}) — 请按以下维度逐一分析：
-- [demand] 需求：...
-- [inventory] 库存：...
-
-## 技术面（60 日 K）
-{indicator block — 已有}
-
-## 分维度资讯（近 24h，已分类）
-### demand
-1. [2026-06-25] 标题 — 摘要 (conf 0.9)
-### inventory
-...
-
-## 输出要求
-1. 先输出 ```json dimension_summary``` 块
-2. 再输出 Markdown 报告，按维度分节
-```
-
-### 7.3 流式协议（保持现有 Tauri Event）
-
-```
-stream_analysis(symbol, trigger)
-  → analysis-delta { text }
-  → analysis-done { report_id, dimension_summary }
-  → analysis-error { message }
-```
-
-解析：流结束后从 content 中提取 ` ```json ` 块写入 `reports.dimension_summary`。
-
-### 7.4 Copilot 追问（Phase 2）
-
-`AiPanel` textarea → `invoke("analysis_followup", { report_id, question })`  
-上下文 = 原 report + 最近 dimension_facts + 相关 news。
-
----
-
-## 8. 服务架构
-
-```
-┌─────────────┐     poll      ┌──────────────┐
-│ Jinshi API  │ ────────────► │ NewsIngest   │──► news_items
-└─────────────┘               └──────┬───────┘
-                                     │
-                              ┌──────▼───────┐
-                              │ NewsClassifier│──► news_classifications
-                              │ rule + llm   │
-                              └──────┬───────┘
-                                     │
-┌─────────────┐   daily cron  ┌──────▼───────┐     stream     ┌────────┐
-│ AKShare K线 │ ────────────► │ AnalysisRunner│ ─────────────►│ LLM    │
-└─────────────┘               │ build_context │                └────────┘
-                              │ + dim news    │──► reports
-                              └──────────────┘
-
-LiquidityJob (daily) ──► liquidity_snapshots ──► filter UI product list
-```
-
-### 8.1 新增 Rust 模块
-
-| 模块 | 职责 |
+| 字段 | 说明 |
 |---|---|
-| `engine/dimensions.rs` | 维度字典 + 品种配置 |
-| `engine/liquidity.rs` | 流动性打分 |
-| `services/news_ingest.rs` | 入库 + 去重 |
-| `services/news_classifier.rs` | 规则 + LLM 分类 |
-| `engine/analysis.rs` | 扩展 build_context：按维度聚合资讯 |
+| `symbol` / `name` | 主力符号与中文名。 |
+| `sector` | 五大板块。 |
+| `dimension` | 分析维度。 |
+| `direction` | bullish / bearish / neutral / mixed。 |
+| `strength` | 影响强度。 |
+| `confidence` | 置信度。 |
+| `quality` | live/history/reference/estimated/pending/stale/error。 |
+| `source` | 行情、新闻、日历、报告、人工规则等。 |
+| `updated_at` | 更新时间。 |
 
-### 8.2 Tauri Commands
+若因子没有真实数据，使用 `pending` 或 `estimated`，不得填充虚假数值。
 
-| Command | 说明 |
+## 7. 异动检测
+
+异动检测来源：
+
+| 类型 | 触发示例 |
 |---|---|
-| `list_products` | 仅 `core` tier，含 dimensions |
-| `list_news_by_dimension` | symbol + dimension + limit |
-| `get_liquidity_ranks` | 排行榜/筛选依据 |
-| `reclassify_news` | 手动触发重分类（调试） |
+| 价格 | 5 分钟涨跌幅超过阈值。 |
+| 波动 | 短周期波动率显著放大。 |
+| 成交 | 成交量/成交额较近期均值放大。 |
+| 数据 | 数据源超时、旧值、跳点。 |
+| 资讯 | 重大新闻与价格同步出现。 |
 
----
+异动信号应包含触发条件、相关品种、严重程度、可能归因、数据质量和快评入口。
 
-## 9. 前端变更
+## 8. LLM 报告结构
 
-| 页面 | 变更 |
+报告生成前应组装以下上下文：
+
+1. 品种信息：中文名、主力符号、板块、交易所。
+2. 技术面：近期 K 线、趋势、波动、关键指标。
+3. 因子摘要：按板块权重排序的核心维度。
+4. 资讯摘要：近期分类资讯及来源时间。
+5. 日历事件：未来两周重要宏观事件。
+6. 外盘参考：与该品种强相关的海外品种。
+7. 数据质量：哪些数据为历史、参考、估算或缺失。
+8. 模拟交易上下文：当前持仓、入场理由、止损止盈、已实现/未实现盈亏。
+
+报告必须包含：
+
+- 结论摘要。
+- 多空因素。
+- 关键观察位或观察条件。
+- 风险提示。
+- 免责声明：仅供参考，不构成投资建议。
+
+交易复盘类报告还应包含：
+
+- 入场理由与当时信息是否匹配。
+- 执行纪律，如是否追涨杀跌、是否按计划止损。
+- 风险暴露，如单品种集中度、隔夜风险、保证金占用。
+- 下一次可改进的具体动作。
+
+`analysis_runner` 已提供免责声明兜底逻辑；前端仍需显著展示。
+
+## 9. 数据库设计要点
+
+核心表包括：
+
+| 表 | 用途 |
 |---|---|
-| SymbolsPage | 仅展示 core；显示 liquidity_score |
-| AiPanel | 报告按维度折叠展示；Copilot 接 followup |
-| 新增 NewsPanel | 按维度筛选资讯流（可选） |
-| `@/data/futures` | 从 `list_products` 动态加载，替代静态缺失文件 |
+| `contracts` | 合约与主力符号。 |
+| `klines` | K 线缓存。 |
+| `news_items` | 资讯原文和来源。 |
+| `news_classifications` | 资讯到品种/维度的分类结果。 |
+| `analysis_dimensions` | 维度字典。 |
+| `dimension_facts` | 抽取或沉淀的因子事实。 |
+| `reports` | LLM 报告归档。 |
+| `followups` | Copilot 追问历史。 |
+| `sim_orders` / `sim_trades` | 模拟委托与成交。 |
+| `sim_positions` / `sim_equity_snapshots` | 模拟持仓与资金曲线。 |
+| `sim_journal_entries` | 交易计划和复盘记录。 |
+| `liquidity_snapshots` | 流动性评分。 |
+| `user_preferences` | 关注列表、调度和 UI 偏好。 |
 
----
+SQLite schema 采用启动时 additive 初始化，无独立迁移框架。
 
-## 10. 实施分期
+## 10. 开发路线
 
-| 阶段 | 内容 | 预估 |
+| 阶段 | 内容 | 状态 |
 |---|---|---|
-| **P0** | 流动性筛选 + core 列表 + `list_products` + 补 futures.ts | 2d |
-| **P1** | news_items 入库 + 规则分类 + news_classifications | 3d |
-| **P2** | LLM 分类 + 分析 prompt 按维度重组 | 3d |
-| **P3** | dimension_summary 落库 + 前端维度 UI | 2d |
-| **P4** | dimension_facts + Copilot followup | 3d |
+| P0 | 五大板块与主流品种目录 | 已落地，持续维护。 |
+| P0 | 金十资讯、财经日历、维度分类 | 已落地，持续增强。 |
+| P0 | LLM 报告、追问、免责声明 | 已落地。 |
+| P0 | 专业工作台页面矩阵 | 已落地。 |
+| P1 | 模拟盘、交易复盘和本地数据库 | 下一阶段重点。 |
+| P1 | 因子真实数据源扩展与溯源 | 下一阶段重点。 |
+| P1 | 异动归因、持仓风险联动与快评质量提升 | 下一阶段重点。 |
+| P2 | CTP/TQSDK 行情升级 | 后续可选，不接交易。 |
+| P2 | 海外期货与付费数据源 | 后续可选。 |
 
----
+## 11. 验收标准
 
-## 附录 A：建议 core 品种（27）
-
-| 板块 | core 品种 |
-|---|---|
-| 黑色 | RB0 HC0 I0 J0 JM0 |
-| 有色 | CU0 AL0 ZN0 NI0 AU0 AG0 LC0 |
-| 农产 | M0 Y0 P0 C0 SR0 CF0 LH0 |
-| 能化 | SC0 FU0 BU0 TA0 MA0 PP0 RU0 |
-| 航运 | EC0 |
-
-watch：AP0 FG0 SA0 AO0 UR0
-
-金融期货：v1 不补充金融期货。`IF0`、`IH0`、`IC0`、`IM0`、`T0`、`TL0`、`TF0`、`TS0` 等仅作为后续扩展候选。
-
----
-
-## 附录 B：配置项（.env）
-
-```env
-LIQUIDITY_MIN_VOLUME_20D=5000
-LIQUIDITY_MIN_TURNOVER_20D=5e8
-NEWS_CLASSIFY_LLM=doubao-lite
-NEWS_CLASSIFY_BATCH=10
-NEWS_RETENTION_DAYS=30
-```
+1. 五大板块页面和品种目录不出现默认金融期货入口。
+2. UI 展示中文品种名，并能映射到主力连续 symbol。
+3. 因子、资讯、异动、报告可以互相跳转或形成可追溯上下文。
+4. 模拟交易可以关联行情、资讯、因子、报告和复盘记录。
+5. 数据缺失时显示质量状态，不生成伪造因子。
+6. LLM 报告包含免责声明。
+7. Mock E2E 覆盖总览、模拟盘、复盘、因子、资讯、日历、异动、助手等关键页面。

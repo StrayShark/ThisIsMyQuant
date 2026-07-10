@@ -412,6 +412,10 @@ export interface WsTickMessage {
 export interface RealtimeQuote {
   symbol: string;
   last_price: number;
+  bid_price?: number;
+  ask_price?: number;
+  bid_volume?: number;
+  ask_volume?: number;
   prev_close: number;
   change_pct: number;
   timestamp: string;
@@ -421,6 +425,10 @@ export interface WsQuoteMessage {
   type: "quote";
   symbol: string;
   last_price: number;
+  bid_price?: number;
+  ask_price?: number;
+  bid_volume?: number;
+  ask_volume?: number;
   prev_close: number;
   change_pct: number;
   timestamp: string;
@@ -434,4 +442,641 @@ export interface WsNotification {
   link?: string;
 }
 
-export type WsMessage = WsKlineMessage | WsTickMessage | WsQuoteMessage | WsNotification | { type: "ping" | "pong" | "system" };
+export type SimOrderSide = "buy" | "sell";
+export type SimOrderOffset = "open" | "close" | "close_today" | "close_yesterday";
+export type SimOrderType =
+  | "market"
+  | "limit"
+  | "stop"
+  | "stop_limit"
+  | "take_profit"
+  | "take_profit_limit"
+  | "trailing_stop"
+  | "condition";
+export type SimOrderStatus = "pending" | "open" | "partially_filled" | "filled" | "cancelled" | "rejected";
+export type SimPositionSide = "long" | "short";
+
+export interface SimAccount {
+  id: string;
+  name: string;
+  currency: string;
+  initial_balance: number;
+  cash_balance: number;
+  equity: number;
+  margin_used: number;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  status: "active" | "frozen" | "closed";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SimContractRule {
+  symbol: string;
+  name: string;
+  exchange: Exchange;
+  contract_multiplier: number;
+  price_tick: number;
+  margin_rate_long: number;
+  margin_rate_short: number;
+  commission_mode: "per_hand" | "per_amount" | "mixed";
+  commission_open: number;
+  commission_close: number;
+  commission_close_today: number;
+  min_order_qty: number;
+  lot_size: number;
+  max_order_qty: number;
+  daily_price_limit_up: number;
+  daily_price_limit_down: number;
+  default_slippage_ticks: number;
+  is_custom: boolean;
+  updated_at: string;
+}
+
+export interface SimRiskRule {
+  id: string;
+  account_id: string;
+  scope: "account" | "symbol";
+  symbol?: string | null;
+  rule_type: "max_lots" | "symbol_margin_ratio" | "risk_ratio" | "loss_limit";
+  threshold: number;
+  action: "reject" | "block_open" | "force_liquidate";
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SimRiskEvent {
+  id: string;
+  account_id: string;
+  rule_id: string;
+  triggered_at: string;
+  description: string;
+  action_taken: string;
+}
+
+export interface SimOrder {
+  id: string;
+  account_id: string;
+  symbol: string;
+  name: string;
+  side: SimOrderSide;
+  offset: SimOrderOffset;
+  order_type: SimOrderType;
+  price: number | null;
+  trigger_price: number | null;
+  stop_loss_price: number | null;
+  take_profit_price: number | null;
+  oco_group_id: string | null;
+  parent_order_id: string | null;
+  tif: string | null;
+  condition_operator: string | null;
+  trailing_distance_ticks: number | null;
+  quantity: number;
+  filled_quantity: number;
+  status: SimOrderStatus;
+  reason: string | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SimTrade {
+  id: string;
+  order_id: string;
+  account_id: string;
+  symbol: string;
+  name: string;
+  side: SimOrderSide;
+  offset: SimOrderOffset;
+  price: number;
+  quantity: number;
+  commission: number;
+  slippage: number;
+  realized_pnl: number;
+  traded_at: string;
+}
+
+export interface SimPosition {
+  account_id: string;
+  symbol: string;
+  name: string;
+  position_side: SimPositionSide;
+  today_qty: number;
+  history_qty: number;
+  total_qty: number;
+  avg_price: number;
+  margin: number;
+  unrealized_pnl: number;
+  updated_at: string;
+}
+
+export interface SimEquitySnapshot {
+  account_id: string;
+  snapshot_at: string;
+  equity: number;
+  cash_balance: number;
+  margin_used: number;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  risk_ratio: number;
+}
+
+export interface SimJournalEntry {
+  id: string;
+  account_id: string;
+  symbol?: string | null;
+  trade_id?: string | null;
+  report_id?: string | null;
+  title: string;
+  thesis?: string | null;
+  execution_review?: string | null;
+  emotion_tags?: string | null;
+  score?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SimAccountSnapshot {
+  account: SimAccount;
+  positions: SimPosition[];
+  risk_ratio: number;
+  today_pnl: number;
+  pending_orders: number;
+}
+
+export interface PlaceSimOrderRequest {
+  account_id: string;
+  symbol: string;
+  side: SimOrderSide;
+  offset: SimOrderOffset;
+  order_type: SimOrderType;
+  price?: number | null;
+  trigger_price?: number | null;
+  stop_loss_price?: number | null;
+  take_profit_price?: number | null;
+  oco_group_id?: string | null;
+  parent_order_id?: string | null;
+  tif?: string | null;
+  condition_operator?: string | null;
+  trailing_distance_ticks?: number | null;
+  quantity: number;
+}
+
+export interface SimPerformance {
+  account_id: string;
+  total_return: number;
+  total_return_pct: number;
+  total_pnl: number;
+  max_drawdown: number;
+  max_drawdown_pct: number;
+  win_rate: number;
+  profit_loss_ratio: number;
+  avg_win: number;
+  avg_loss: number;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  risk_return_ratio: number;
+  symbol_contribution: Record<string, number>;
+  hourly_contribution: Record<string, number>;
+  avg_holding_hours: number;
+  overnight_count: number;
+}
+
+export interface SimOrderEstimate {
+  margin_required: number;
+  commission_estimate: number;
+  slippage_estimate: number;
+  total_cost: number;
+}
+
+export interface ReplayState {
+  running: boolean;
+  symbol: string;
+  date: string;
+  interval: string;
+  account_id?: string | null;
+  current_index: number;
+  total_bars: number;
+  current_bar_time?: string | null;
+  current_price: number;
+  speed: number;
+  completed: boolean;
+}
+
+export interface ReplayKlinePayload {
+  current_index: number;
+  total_bars: number;
+  bars: KLine[];
+}
+
+export interface DatabaseTableStats {
+  name: string;
+  row_count: number;
+  size_bytes: number;
+  last_updated?: string | null;
+}
+
+export interface DatabaseSummary {
+  path: string;
+  total_size_bytes: number;
+  tables: DatabaseTableStats[];
+}
+
+export interface WsSimOrderUpdateMessage {
+  type: "sim-order-update";
+  account_id: string;
+}
+
+export interface WsSimAccountUpdateMessage {
+  type: "sim-account-update";
+  account_id: string;
+}
+
+export interface WsAnomalyPositionRiskMessage {
+  type: "anomaly-position-risk";
+  symbol: string;
+  account_id: string;
+  account_name: string;
+  position_side: string;
+  position_qty: number;
+  avg_price: number;
+  current_price: number;
+  unrealized_pnl: number;
+  pnl_change_if_hit: number;
+  risk_ratio: number;
+  description: string;
+}
+
+export type WsMessage =
+  | WsKlineMessage
+  | WsTickMessage
+  | WsQuoteMessage
+  | WsNotification
+  | WsSimOrderUpdateMessage
+  | WsSimAccountUpdateMessage
+  | WsAnomalyPositionRiskMessage
+  | { type: "ping" | "pong" | "system" };
+
+// ============================================================================
+// A 股（股票市场）类型
+// ============================================================================
+
+export interface StockSymbol {
+  ts_code: string;
+  symbol: string;
+  name: string;
+  exchange: string;
+  market?: string | null;
+  industry?: string | null;
+  list_date?: string | null;
+  status: string;
+  source: string;
+  updated_at: string;
+}
+
+export interface StockBar {
+  ts_code: string;
+  trade_date: string;
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  close?: number | null;
+  pre_close?: number | null;
+  pct_chg?: number | null;
+  volume?: number | null;
+  amount?: number | null;
+  turnover_rate?: number | null;
+  adj_factor?: number | null;
+  adjustment: string;
+  source: string;
+  updated_at: string;
+}
+
+export interface StockIndexBar {
+  index_code: string;
+  trade_date: string;
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  close?: number | null;
+  pct_chg?: number | null;
+  volume?: number | null;
+  amount?: number | null;
+  source: string;
+  updated_at: string;
+}
+
+export interface StockBoard {
+  board_code: string;
+  board_name: string;
+  board_type: string;
+  source: string;
+  updated_at: string;
+}
+
+export interface StockBoardMember {
+  board_code: string;
+  ts_code: string;
+  weight?: number | null;
+  source: string;
+  updated_at: string;
+}
+
+export interface StockBoardSnapshot {
+  board_code: string;
+  trade_date: string;
+  pct_chg?: number | null;
+  amount?: number | null;
+  turnover_rate?: number | null;
+  net_flow?: number | null;
+  up_count?: number | null;
+  down_count?: number | null;
+  source: string;
+  updated_at: string;
+}
+
+export interface StockFinancialMetric {
+  ts_code: string;
+  report_period: string;
+  report_type?: string | null;
+  revenue?: number | null;
+  revenue_yoy?: number | null;
+  net_profit?: number | null;
+  net_profit_yoy?: number | null;
+  roe?: number | null;
+  gross_margin?: number | null;
+  debt_ratio?: number | null;
+  operating_cash_flow?: number | null;
+  eps?: number | null;
+  source: string;
+  updated_at: string;
+}
+
+export interface StockValuationSnapshot {
+  ts_code: string;
+  trade_date: string;
+  pe_ttm?: number | null;
+  pb?: number | null;
+  ps_ttm?: number | null;
+  dividend_yield?: number | null;
+  market_cap?: number | null;
+  float_market_cap?: number | null;
+  pe_percentile?: number | null;
+  pb_percentile?: number | null;
+  source: string;
+  updated_at: string;
+}
+
+export interface StockFactorSnapshot {
+  ts_code: string;
+  factor_date: string;
+  momentum?: number | null;
+  quality?: number | null;
+  valuation?: number | null;
+  growth?: number | null;
+  volatility?: number | null;
+  liquidity?: number | null;
+  capital_flow?: number | null;
+  score?: number | null;
+  factor_version: string;
+  source: string;
+  updated_at: string;
+}
+
+export interface StockScreenTemplate {
+  id: string;
+  name: string;
+  criteria_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StockScreenResult {
+  id: string;
+  template_id?: string | null;
+  name: string;
+  criteria_json: string;
+  result_json: string;
+  trade_date?: string | null;
+  report_period?: string | null;
+  source_summary?: string | null;
+  created_at: string;
+}
+
+export interface StockWatchlist {
+  id: string;
+  name: string;
+  symbols: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StockDataQuality {
+  status: string;
+  message?: string | null;
+  last_success_at?: string | null;
+}
+
+export interface StockIndexQuote {
+  index_code: string;
+  name: string;
+  close?: number | null;
+  pct_chg?: number | null;
+  amount?: number | null;
+  trade_date?: string | null;
+  source: string;
+  updated_at: string;
+}
+
+export interface StockMarketBreadth {
+  trade_date?: string | null;
+  up_count: number;
+  down_count: number;
+  flat_count: number;
+  limit_up_count: number;
+  limit_down_count: number;
+  total_amount?: number | null;
+  prev_amount?: number | null;
+  amount_change_pct?: number | null;
+  source: string;
+  updated_at: string;
+}
+
+export interface StockBoardView {
+  board_code: string;
+  board_name: string;
+  board_type: string;
+  pct_chg?: number | null;
+  amount?: number | null;
+  net_flow?: number | null;
+  up_count?: number | null;
+  down_count?: number | null;
+  trade_date?: string | null;
+}
+
+export interface StockSymbolSnapshot {
+  ts_code: string;
+  symbol: string;
+  name: string;
+  exchange: string;
+  industry?: string | null;
+  close?: number | null;
+  pct_chg?: number | null;
+  amount?: number | null;
+  market_cap?: number | null;
+  pe_ttm?: number | null;
+  pb?: number | null;
+  trade_date?: string | null;
+}
+
+export interface StockBoardDetailView {
+  board: StockBoard;
+  snapshot?: StockBoardSnapshot | null;
+  top_stocks: StockSymbolSnapshot[];
+  bottom_stocks: StockSymbolSnapshot[];
+  members: StockSymbolSnapshot[];
+}
+
+export interface AStockDashboardView {
+  indices: StockIndexQuote[];
+  breadth: StockMarketBreadth;
+  boards: StockBoardView[];
+  trade_date?: string | null;
+  source: string;
+  updated_at: string;
+  quality: StockDataQuality;
+}
+
+export interface StockDetailView {
+  symbol: StockSymbol;
+  latest_bar?: StockBar | null;
+  latest_valuation?: StockValuationSnapshot | null;
+  latest_financial?: StockFinancialMetric | null;
+  factor_scores?: StockFactorSnapshot | null;
+  related_boards: StockBoard[];
+  quality: StockDataQuality;
+}
+
+export interface StockScreenerResultView {
+  id: string;
+  name: string;
+  criteria_json: string;
+  trade_date?: string | null;
+  report_period?: string | null;
+  rows: StockSymbolSnapshot[];
+  count: number;
+}
+
+export interface StockDataSyncStatus {
+  task_id: string;
+  scope: string;
+  status: string;
+  message: string;
+}
+
+export interface StockSymbolsQuery {
+  query?: string | null;
+  industry?: string | null;
+  limit?: number | null;
+}
+
+export interface StockScreenerRequest {
+  criteria_json: string;
+  name?: string | null;
+  save_template?: boolean | null;
+}
+
+// A 股模拟组合
+
+export interface StockPaperAccount {
+  id: string;
+  name: string;
+  initial_balance: number;
+  cash_balance: number;
+  market_value: number;
+  total_equity: number;
+  total_cost: number;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StockPaperOrder {
+  id: string;
+  account_id: string;
+  ts_code: string;
+  name: string;
+  side: string;
+  order_type: string;
+  price?: number | null;
+  quantity: number;
+  filled_quantity: number;
+  status: string;
+  reason?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StockPaperPosition {
+  account_id: string;
+  ts_code: string;
+  name: string;
+  quantity: number;
+  available_quantity: number;
+  avg_cost: number;
+  total_cost: number;
+  market_value: number;
+  unrealized_pnl: number;
+  updated_at: string;
+}
+
+export interface StockPaperTrade {
+  id: string;
+  order_id: string;
+  account_id: string;
+  ts_code: string;
+  name: string;
+  side: string;
+  price: number;
+  quantity: number;
+  commission: number;
+  traded_at: string;
+}
+
+export interface StockPaperPortfolioView {
+  account: StockPaperAccount;
+  positions: StockPaperPosition[];
+  orders: StockPaperOrder[];
+  trades: StockPaperTrade[];
+}
+
+export interface StockPaperOrderEstimate {
+  estimated_amount: number;
+  commission: number;
+  stamp_tax: number;
+  transfer_fee: number;
+  total_cost: number;
+}
+
+export interface CreateStockPaperAccountRequest {
+  name: string;
+  initial_balance: number;
+}
+
+export interface PlaceStockPaperOrderRequest {
+  account_id: string;
+  ts_code: string;
+  side: string;
+  order_type: string;
+  price?: number | null;
+  quantity: number;
+}
+
+export interface CancelStockPaperOrderRequest {
+  account_id: string;
+  order_id: string;
+}

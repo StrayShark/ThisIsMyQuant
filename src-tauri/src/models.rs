@@ -59,6 +59,9 @@ fn default_multiplier() -> f64 {
 fn default_margin() -> f64 {
     0.1
 }
+fn default_one_i64() -> i64 {
+    1
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tick {
@@ -98,6 +101,10 @@ pub struct TickUpdateEvent {
 pub struct RealtimeQuote {
     pub symbol: String,
     pub last_price: f64,
+    pub bid_price: f64,
+    pub ask_price: f64,
+    pub bid_volume: i64,
+    pub ask_volume: i64,
     pub prev_close: f64,
     pub change_pct: f64,
     pub timestamp: String,
@@ -111,6 +118,10 @@ pub struct QuoteUpdateEvent {
     pub msg_type: String,
     pub symbol: String,
     pub last_price: f64,
+    pub bid_price: f64,
+    pub ask_price: f64,
+    pub bid_volume: i64,
+    pub ask_volume: i64,
     pub prev_close: f64,
     pub change_pct: f64,
     pub timestamp: String,
@@ -598,6 +609,278 @@ pub fn dt_to_iso(dt: DateTime<Utc>) -> String {
     dt.to_rfc3339()
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimAccount {
+    pub id: String,
+    pub name: String,
+    pub currency: String,
+    pub initial_balance: f64,
+    pub cash_balance: f64,
+    pub equity: f64,
+    pub margin_used: f64,
+    pub realized_pnl: f64,
+    pub unrealized_pnl: f64,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimContractRule {
+    pub symbol: String,
+    pub name: String,
+    pub exchange: String,
+    pub contract_multiplier: f64,
+    pub price_tick: f64,
+    pub margin_rate_long: f64,
+    pub margin_rate_short: f64,
+    pub commission_mode: String,
+    pub commission_open: f64,
+    pub commission_close: f64,
+    pub commission_close_today: f64,
+    #[serde(default)]
+    pub min_order_qty: i64,
+    #[serde(default = "default_one_i64")]
+    pub lot_size: i64,
+    #[serde(default)]
+    pub max_order_qty: i64,
+    #[serde(default)]
+    pub daily_price_limit_up: f64,
+    #[serde(default)]
+    pub daily_price_limit_down: f64,
+    #[serde(default)]
+    pub default_slippage_ticks: f64,
+    #[serde(default)]
+    pub is_custom: bool,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimRiskRule {
+    pub id: String,
+    pub account_id: String,
+    pub scope: String, // "account" | "symbol"
+    pub symbol: Option<String>,
+    pub rule_type: String, // "max_lots" | "symbol_margin_ratio" | "risk_ratio" | "loss_limit"
+    pub threshold: f64,
+    pub action: String, // "reject" | "block_open" | "force_liquidate"
+    pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimRiskEvent {
+    pub id: String,
+    pub account_id: String,
+    pub rule_id: String,
+    pub triggered_at: String,
+    pub description: String,
+    pub action_taken: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimOrder {
+    pub id: String,
+    pub account_id: String,
+    pub symbol: String,
+    pub name: String,
+    pub side: String,
+    pub offset: String,
+    pub order_type: String,
+    pub price: Option<f64>,
+    pub trigger_price: Option<f64>,
+    pub stop_loss_price: Option<f64>,
+    pub take_profit_price: Option<f64>,
+    #[serde(default)]
+    pub oco_group_id: Option<String>,
+    #[serde(default)]
+    pub parent_order_id: Option<String>,
+    #[serde(default)]
+    pub tif: Option<String>,
+    #[serde(default)]
+    pub condition_operator: Option<String>,
+    #[serde(default)]
+    pub trailing_distance_ticks: Option<f64>,
+    #[serde(default)]
+    pub trailing_reference_price: Option<f64>,
+    pub quantity: i64,
+    pub filled_quantity: i64,
+    pub status: String,
+    pub reason: Option<String>,
+    pub source: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimTrade {
+    pub id: String,
+    pub order_id: String,
+    pub account_id: String,
+    pub symbol: String,
+    pub name: String,
+    pub side: String,
+    pub offset: String,
+    pub price: f64,
+    pub quantity: i64,
+    pub commission: f64,
+    pub slippage: f64,
+    pub realized_pnl: f64,
+    pub traded_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimPosition {
+    pub account_id: String,
+    pub symbol: String,
+    pub name: String,
+    pub position_side: String,
+    pub today_qty: i64,
+    pub history_qty: i64,
+    pub total_qty: i64,
+    pub avg_price: f64,
+    pub margin: f64,
+    pub unrealized_pnl: f64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimEquitySnapshot {
+    pub account_id: String,
+    pub snapshot_at: String,
+    pub equity: f64,
+    pub cash_balance: f64,
+    pub margin_used: f64,
+    pub realized_pnl: f64,
+    pub unrealized_pnl: f64,
+    pub risk_ratio: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimJournalEntry {
+    pub id: String,
+    pub account_id: String,
+    pub symbol: Option<String>,
+    pub trade_id: Option<String>,
+    pub report_id: Option<String>,
+    pub title: String,
+    pub thesis: Option<String>,
+    pub execution_review: Option<String>,
+    pub emotion_tags: Option<String>,
+    pub score: Option<i64>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlaceSimOrderRequest {
+    pub account_id: String,
+    pub symbol: String,
+    pub side: String,
+    pub offset: String,
+    pub order_type: String,
+    pub price: Option<f64>,
+    pub trigger_price: Option<f64>,
+    pub stop_loss_price: Option<f64>,
+    pub take_profit_price: Option<f64>,
+    pub oco_group_id: Option<String>,
+    pub parent_order_id: Option<String>,
+    pub tif: Option<String>,
+    pub condition_operator: Option<String>,
+    pub trailing_distance_ticks: Option<f64>,
+    pub quantity: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SimOrderEstimate {
+    pub margin_required: f64,
+    pub commission_estimate: f64,
+    pub slippage_estimate: f64,
+    pub total_cost: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SimAccountSnapshot {
+    pub account: SimAccount,
+    pub positions: Vec<SimPosition>,
+    pub risk_ratio: f64,
+    pub today_pnl: f64,
+    pub pending_orders: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplayState {
+    pub running: bool,
+    pub symbol: String,
+    pub date: String,
+    pub interval: String,
+    pub account_id: Option<String>,
+    pub current_index: i32,
+    pub total_bars: i32,
+    pub current_bar_time: Option<String>,
+    pub current_price: f64,
+    pub speed: i32,
+    pub completed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplaySession {
+    pub id: String,
+    pub symbol: String,
+    pub interval: String,
+    pub replay_date: String,
+    pub current_index: i32,
+    pub speed: i32,
+    pub running: bool,
+    pub account_id: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplayKlinePayload {
+    pub current_index: i32,
+    pub total_bars: i32,
+    pub bars: Vec<KLine>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SimPerformance {
+    pub account_id: String,
+    pub total_return: f64,
+    pub total_return_pct: f64,
+    pub total_pnl: f64,
+    pub max_drawdown: f64,
+    pub max_drawdown_pct: f64,
+    pub win_rate: f64,
+    pub profit_loss_ratio: f64,
+    pub avg_win: f64,
+    pub avg_loss: f64,
+    pub total_trades: usize,
+    pub winning_trades: usize,
+    pub losing_trades: usize,
+    pub risk_return_ratio: f64,
+    pub symbol_contribution: std::collections::HashMap<String, f64>,
+    pub hourly_contribution: std::collections::HashMap<String, f64>,
+    pub avg_holding_hours: f64,
+    pub overnight_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseTableStats {
+    pub name: String,
+    pub row_count: i64,
+    pub size_bytes: i64,
+    pub last_updated: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DatabaseSummary {
+    pub path: String,
+    pub total_size_bytes: i64,
+    pub tables: Vec<DatabaseTableStats>,
+}
+
 pub fn parse_dt(s: &str) -> Option<DateTime<Utc>> {
     chrono::DateTime::parse_from_rfc3339(s)
         .ok()
@@ -618,4 +901,443 @@ pub fn parse_dt(s: &str) -> Option<DateTime<Utc>> {
                 .and_then(|d| d.and_hms_opt(0, 0, 0))
                 .map(|n| n.and_utc())
         })
+}
+
+// ============================================================================
+// A 股（股票市场）数据模型
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockSymbol {
+    pub ts_code: String,
+    pub symbol: String,
+    pub name: String,
+    pub exchange: String,
+    pub market: Option<String>,
+    pub industry: Option<String>,
+    pub list_date: Option<String>,
+    pub status: String,
+    pub source: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockBar {
+    pub ts_code: String,
+    pub trade_date: String,
+    pub open: Option<f64>,
+    pub high: Option<f64>,
+    pub low: Option<f64>,
+    pub close: Option<f64>,
+    pub pre_close: Option<f64>,
+    pub pct_chg: Option<f64>,
+    pub volume: Option<f64>,
+    pub amount: Option<f64>,
+    pub turnover_rate: Option<f64>,
+    pub adj_factor: Option<f64>,
+    pub adjustment: String,
+    pub source: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockIndexBar {
+    pub index_code: String,
+    pub trade_date: String,
+    pub open: Option<f64>,
+    pub high: Option<f64>,
+    pub low: Option<f64>,
+    pub close: Option<f64>,
+    pub pct_chg: Option<f64>,
+    pub volume: Option<f64>,
+    pub amount: Option<f64>,
+    pub source: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockBoard {
+    pub board_code: String,
+    pub board_name: String,
+    pub board_type: String,
+    pub source: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockBoardMember {
+    pub board_code: String,
+    pub ts_code: String,
+    pub weight: Option<f64>,
+    pub source: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockBoardSnapshot {
+    pub board_code: String,
+    pub trade_date: String,
+    pub pct_chg: Option<f64>,
+    pub amount: Option<f64>,
+    pub turnover_rate: Option<f64>,
+    pub net_flow: Option<f64>,
+    pub up_count: Option<i64>,
+    pub down_count: Option<i64>,
+    pub source: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockFinancialMetric {
+    pub ts_code: String,
+    pub report_period: String,
+    pub report_type: Option<String>,
+    pub revenue: Option<f64>,
+    pub revenue_yoy: Option<f64>,
+    pub net_profit: Option<f64>,
+    pub net_profit_yoy: Option<f64>,
+    pub roe: Option<f64>,
+    pub gross_margin: Option<f64>,
+    pub debt_ratio: Option<f64>,
+    pub operating_cash_flow: Option<f64>,
+    pub eps: Option<f64>,
+    pub source: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockValuationSnapshot {
+    pub ts_code: String,
+    pub trade_date: String,
+    pub pe_ttm: Option<f64>,
+    pub pb: Option<f64>,
+    pub ps_ttm: Option<f64>,
+    pub dividend_yield: Option<f64>,
+    pub market_cap: Option<f64>,
+    pub float_market_cap: Option<f64>,
+    pub pe_percentile: Option<f64>,
+    pub pb_percentile: Option<f64>,
+    pub source: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockFactorSnapshot {
+    pub ts_code: String,
+    pub factor_date: String,
+    pub momentum: Option<f64>,
+    pub quality: Option<f64>,
+    pub valuation: Option<f64>,
+    pub growth: Option<f64>,
+    pub volatility: Option<f64>,
+    pub liquidity: Option<f64>,
+    pub capital_flow: Option<f64>,
+    pub score: Option<f64>,
+    pub factor_version: String,
+    pub source: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockScreenTemplate {
+    pub id: String,
+    pub name: String,
+    pub criteria_json: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockScreenResult {
+    pub id: String,
+    pub template_id: Option<String>,
+    pub name: String,
+    pub criteria_json: String,
+    pub result_json: String,
+    pub trade_date: Option<String>,
+    pub report_period: Option<String>,
+    pub source_summary: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockWatchlist {
+    pub id: String,
+    pub name: String,
+    pub symbols: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+// ============================================================================
+// A 股 Command 请求 / 响应 DTO
+// ============================================================================
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StockSymbolsQuery {
+    pub query: Option<String>,
+    pub industry: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StockBarsRequest {
+    pub ts_code: String,
+    pub adjustment: Option<String>,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StockDetailQuery {
+    pub ts_code: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StockIndustriesQuery {
+    pub board_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StockIndustryDetailQuery {
+    pub board_code: String,
+    pub trade_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StockDataSyncRequest {
+    pub scope: String,
+    pub symbols: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StockDataSyncStatus {
+    pub task_id: String,
+    pub scope: String,
+    pub status: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StockIndexQuote {
+    pub index_code: String,
+    pub name: String,
+    pub close: Option<f64>,
+    pub pct_chg: Option<f64>,
+    pub amount: Option<f64>,
+    pub trade_date: Option<String>,
+    pub source: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StockMarketBreadth {
+    pub trade_date: Option<String>,
+    pub up_count: i64,
+    pub down_count: i64,
+    pub flat_count: i64,
+    pub limit_up_count: i64,
+    pub limit_down_count: i64,
+    pub total_amount: Option<f64>,
+    pub prev_amount: Option<f64>,
+    pub amount_change_pct: Option<f64>,
+    pub source: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StockBoardView {
+    pub board_code: String,
+    pub board_name: String,
+    pub board_type: String,
+    pub pct_chg: Option<f64>,
+    pub amount: Option<f64>,
+    pub net_flow: Option<f64>,
+    pub up_count: Option<i64>,
+    pub down_count: Option<i64>,
+    pub trade_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StockBoardDetailView {
+    pub board: StockBoard,
+    pub snapshot: Option<StockBoardSnapshot>,
+    pub top_stocks: Vec<StockSymbolSnapshot>,
+    pub bottom_stocks: Vec<StockSymbolSnapshot>,
+    pub members: Vec<StockSymbolSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StockSymbolSnapshot {
+    pub ts_code: String,
+    pub symbol: String,
+    pub name: String,
+    pub exchange: String,
+    pub industry: Option<String>,
+    pub close: Option<f64>,
+    pub pct_chg: Option<f64>,
+    pub amount: Option<f64>,
+    pub market_cap: Option<f64>,
+    pub pe_ttm: Option<f64>,
+    pub pb: Option<f64>,
+    pub trade_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AStockDashboardView {
+    pub indices: Vec<StockIndexQuote>,
+    pub breadth: StockMarketBreadth,
+    pub boards: Vec<StockBoardView>,
+    pub trade_date: Option<String>,
+    pub source: String,
+    pub updated_at: String,
+    pub quality: StockDataQuality,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StockDataQuality {
+    pub status: String,
+    pub message: Option<String>,
+    pub last_success_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StockDetailView {
+    pub symbol: StockSymbol,
+    pub latest_bar: Option<StockBar>,
+    pub latest_valuation: Option<StockValuationSnapshot>,
+    pub latest_financial: Option<StockFinancialMetric>,
+    pub factor_scores: Option<StockFactorSnapshot>,
+    pub related_boards: Vec<StockBoard>,
+    pub quality: StockDataQuality,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StockScreenerRequest {
+    pub criteria_json: String,
+    pub name: Option<String>,
+    pub save_template: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StockScreenerResultView {
+    pub id: String,
+    pub name: String,
+    pub criteria_json: String,
+    pub trade_date: Option<String>,
+    pub report_period: Option<String>,
+    pub rows: Vec<StockSymbolSnapshot>,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SaveStockWatchlistRequest {
+    pub id: Option<String>,
+    pub name: String,
+    pub symbols: Vec<String>,
+}
+
+// ============================================================================
+// A 股模拟组合数据模型
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockPaperAccount {
+    pub id: String,
+    pub name: String,
+    pub initial_balance: f64,
+    pub cash_balance: f64,
+    pub market_value: f64,
+    pub total_equity: f64,
+    pub total_cost: f64,
+    pub realized_pnl: f64,
+    pub unrealized_pnl: f64,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockPaperOrder {
+    pub id: String,
+    pub account_id: String,
+    pub ts_code: String,
+    pub name: String,
+    pub side: String,
+    pub order_type: String,
+    pub price: Option<f64>,
+    pub quantity: i64,
+    pub filled_quantity: i64,
+    pub status: String,
+    pub reason: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockPaperPosition {
+    pub account_id: String,
+    pub ts_code: String,
+    pub name: String,
+    pub quantity: i64,
+    pub available_quantity: i64,
+    pub avg_cost: f64,
+    pub total_cost: f64,
+    pub market_value: f64,
+    pub unrealized_pnl: f64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockPaperTrade {
+    pub id: String,
+    pub order_id: String,
+    pub account_id: String,
+    pub ts_code: String,
+    pub name: String,
+    pub side: String,
+    pub price: f64,
+    pub quantity: i64,
+    pub commission: f64,
+    pub traded_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateStockPaperAccountRequest {
+    pub name: String,
+    pub initial_balance: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlaceStockPaperOrderRequest {
+    pub account_id: String,
+    pub ts_code: String,
+    pub side: String,
+    pub order_type: String,
+    pub price: Option<f64>,
+    pub quantity: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CancelStockPaperOrderRequest {
+    pub account_id: String,
+    pub order_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StockPaperPortfolioView {
+    pub account: StockPaperAccount,
+    pub positions: Vec<StockPaperPosition>,
+    pub orders: Vec<StockPaperOrder>,
+    pub trades: Vec<StockPaperTrade>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StockPaperOrderEstimate {
+    pub estimated_amount: f64,
+    pub commission: f64,
+    pub stamp_tax: f64,
+    pub transfer_fee: f64,
+    pub total_cost: f64,
 }

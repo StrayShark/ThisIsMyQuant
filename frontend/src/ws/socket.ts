@@ -31,6 +31,12 @@ class EventClient {
     await listen<WsMessage>("notification", (e) => {
       this.handlers.forEach((h) => h(e.payload));
     });
+    await listen<WsMessage>("sim-order-update", (e) => {
+      this.handlers.forEach((h) => h(e.payload));
+    });
+    await listen<WsMessage>("sim-account-update", (e) => {
+      this.handlers.forEach((h) => h(e.payload));
+    });
   }
 
   subscribe(channels: string[]) {

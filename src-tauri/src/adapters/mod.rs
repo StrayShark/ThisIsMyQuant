@@ -4,6 +4,7 @@ mod jinshi;
 mod jinshi_calendar;
 mod llm;
 mod overseas_futures;
+mod stock_data;
 
 pub use akshare::AkshareClient;
 pub use feed::{feed_from_config, AksharePollFeed, MarketFeed};
@@ -14,3 +15,4 @@ pub use jinshi_calendar::{
 };
 pub use llm::LlmRouter;
 pub use overseas_futures::{fetch_overseas_quote, list_overseas_symbols};
+pub use stock_data::{AkshareStockProvider, StockBarsRequest, StockDataProvider};

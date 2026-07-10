@@ -1,328 +1,242 @@
 # UI 设计语言（DESIGN）
 
-> 版本：v3.0 · 2026-06-24
-> **源规范**：`~/global_design/awesome-design-md/design-md/vercel/DESIGN.md`（Vercel-Inspired，已纳入下文）
-> **项目变体**：深色仪表盘（参考 [Vercel Dashboard](https://vercel.com/dashboard)），非 marketing 浅色站
-> **组件体系**：[shadcn/ui](https://ui.shadcn.com/) New York + 项目 token（`frontend/src/design/tokens.css`）
+> 版本：v3.3 · 2026-07-09  
+> 产品方向：国内期货与 A 股模拟盘 + 本地数据库 + 专业分析复盘工作台  
+> 参考气质：Robinhood / Coinbase 的低噪声金融 UI + 桌面研究终端的信息密度  
+> 组件体系：shadcn/ui New York + Tailwind + `frontend/src/design/tokens.css`
 
 ---
 
-## 0. 规范层级
+## 1. 设计目标
 
-| 层级 | 说明 |
+ThisIsMyQuant 的界面应像一个研究员和交易练习者每天打开的本地市场工作台，而不是营销首页或泛资讯门户。设计目标：
+
+1. **快速判断**：首屏能看出五大板块强弱、风险点、最新决策流和待处理报告。
+2. **练习交易**：模拟账户、下单面板、持仓、委托、成交和风险度必须随时可见。
+3. **解释行情**：价格变化必须能向资讯、因子、日历、外盘联动或模拟持仓继续下钻。
+4. **可信边界**：实时、延迟、历史、估算、错误数据和模拟交易都要明确标识。
+4. **低噪声**：避免大面积装饰、营销式 hero、过度渐变和嵌套卡片。
+5. **桌面优先**：适合长时间盯盘、复盘和研究，信息紧凑但不拥挤。
+
+最新 A 股高保真交互设计稿：`docs/A_STOCK_UI_INTERACTION_DESIGN.html`。该文件为本地设计产物，已加入 `.gitignore`，不作为仓库提交物。
+
+## 2. 页面矩阵
+
+| 页面 | 目标 | 关键组件 |
+|---|---|---|
+| 总览 | 模拟账户 + 专业分析工作台 | 账户权益、持仓风险、板块概览、决策流、因子快照、异动、报告工作流。 |
+| 行情 | 图表与行情监控 | K 线、周期切换、指标、订阅状态、OHLCV。 |
+| 模拟盘 | 虚拟交易工作台 | 下单面板、持仓、委托、成交、保证金、风险度、资金曲线。 |
+| 复盘 | 交易复盘 | 交易日记、计划执行、盈亏归因、胜率、回撤、LLM 总结。 |
+| 回放 | 历史行情训练 | 日期/品种选择、播放控制、隐藏未来数据、模拟下单。 |
+| A 股总览 | A 股市场结构 | 指数卡、涨跌家数、涨跌停、成交额、行业热力、风格轮动。 |
+| 行业概念 | A 股板块主线 | 行业/概念排行、成分股、资金流、领涨领跌、板块详情。 |
+| 个股 | A 股个股工作台 | K 线、财务摘要、估值、资金流、公告新闻、同行对比。 |
+| 筛选器 | 股票池构建 | 条件筛选、财务过滤、技术形态、因子打分、结果快照。 |
+| 财报 | A 股基本面 | 三大报表、盈利能力、成长、现金流、负债和杜邦拆解。 |
+| 模拟组合 | A 股纸面组合 | 虚拟买卖、T+1、费用、持仓、收益、回撤和行业暴露。 |
+| 因子 | 基本面/宏观解释 | 板块维度、品种因子、方向、置信度、数据质量。 |
+| 资讯 | 资讯决策中心 | 金十资讯、分类标签、影响品种、决策流节点。 |
+| 日历 | 宏观事件 | 事件列表、重要性、影响板块、报告注入提示。 |
+| 异动 | 风险与机会提示 | 异动列表、触发条件、归因、快评入口。 |
+| 助手 | Copilot 研究 | 报告追问、上下文引用、流式回答。 |
+| 报告 | 归档与复盘 | 报告筛选、详情、触发类型、免责声明。 |
+| 品种 | 产品目录 | 五大板块、中文名、主力符号、交易所、流动性、合约规则入口。 |
+| 数据库 | 本地数据资产 | 行情、资讯、报告、模拟交易、复盘数据、导入导出、备份。 |
+| 状态 | 系统健康 | 数据源、任务、LLM、数据库、模拟引擎、最近错误。 |
+| 设置 | 本地配置 | Provider、Key、关注列表、调度、偏好。 |
+
+## 3. 信息架构
+
+主导航采用固定侧栏，顺序与用户工作流一致：
+
+```
+总览 → 期货 → A股 → 报告 → 数据库 → 状态 → 设置
+```
+
+其中 `期货` 内部包含行情、模拟盘、复盘、回放、因子、资讯、日历、异动；`A股` 内部包含 A 股总览、行业概念、个股、筛选器、财报、资金情绪、模拟组合。
+
+页面布局遵循三层结构：
+
+1. **页头**：页面标题、当前板块/品种、主要操作、更新时间。
+2. **主内容**：图表、列表、时间线、表格、因子矩阵等核心工作区。
+3. **辅助信息**：数据质量、来源、错误态、任务状态、关联入口。
+
+不要在页面顶部放营销文案、产品介绍或大面积 hero。用户进入应用后应直接看到可操作的分析界面。
+
+## 4. 视觉原则
+
+| 原则 | 说明 |
 |---|---|
-| **L1 — Vercel 源规范** | 下文 YAML + Overview/Do-Don't，来自 global_design，默认浅色 marketing |
-| **L2 — 深色仪表盘映射** | 本项目将 L1 token 映射为 dashboard 深色值（§1） |
-| **L3 — 产品扩展** | AI 时间线五色、行情涨跌色、220px 侧栏等业务规则（§2–§7） |
-| **L4 — 合规审查** | 代码对照 L2+L3 的审查结论（§9） |
+| 深色优先 | 默认暗色主题，降低长时间盯盘疲劳。 |
+| 细线分层 | 面板使用 1px 边框和轻微背景差，不使用重投影。 |
+| 金融中性 | 主色用于操作和焦点，涨跌色只用于行情语义。 |
+| 信息密度适中 | 总览可密集，详情页要给图表和阅读留足空间。 |
+| 不嵌套卡片 | 页面 section 不做浮动卡片，卡片只用于重复项、面板或模态。 |
+| 可追溯 | 资讯、因子、报告必须保留来源/时间/质量标识。 |
 
----
+## 5. Token 与颜色
 
-## 1. Vercel 源规范（global_design）
+项目 token 位于 `frontend/src/design/tokens.css`，Tailwind 映射位于 `frontend/tailwind.config.ts`。
 
-> 完整 prose 见 `~/global_design/awesome-design-md/design-md/vercel/DESIGN.md`。
-> 以下为 machine-readable token 块与核心原则摘要。
+| 用途 | 规则 |
+|---|---|
+| 背景 | 页面底色接近黑色，面板使用低对比深灰。 |
+| 主操作 | 使用单一 primary 色，不为不同模块发明新的 CTA 色。 |
+| 上涨 | 仅用于价格、涨幅、正向行情信号。 |
+| 下跌 | 仅用于价格、跌幅、风险/负向行情信号。 |
+| 警告 | 用于数据陈旧、任务失败、重要日历事件。 |
+| 数据质量 | 使用 badge + 文案，颜色必须克制。 |
+| 模拟交易 | 所有下单、持仓、成交和资金组件必须显示“模拟”标识。 |
+| A 股市场 | 指数、行业、个股、财报、筛选器需显示数据源、报告期和复权口径。 |
 
-```yaml
----
-version: alpha
-name: Vercel-Inspired-design-analysis
-description: Vercel design language — stark black-and-ink on near-white canvas, mesh gradient decoration, Geist sans + Geist Mono.
+避免单一紫蓝、单一咖啡/棕色、纯渐变背景等一眼主题化的界面。
 
-colors:
-  primary: "#171717"
-  on-primary: "#ffffff"
-  ink: "#171717"
-  body: "#4d4d4d"
-  mute: "#888888"
-  hairline: "#ebebeb"
-  hairline-strong: "#a1a1a1"
-  canvas: "#ffffff"
-  canvas-soft: "#fafafa"
-  canvas-soft-2: "#f5f5f5"
-  link: "#0070f3"
-  link-deep: "#0761d1"
-  link-bg-soft: "#d3e5ff"
-  success: "#0070f3"
-  error: "#ee0000"
-  error-soft: "#f7d4d6"
-  error-deep: "#c50000"
-  warning: "#f5a623"
-  warning-soft: "#ffefcf"
-  warning-deep: "#ab570a"
-  violet: "#7928ca"
-  cyan: "#50e3c2"
-  cyan-soft: "#aaffec"
-  highlight-pink: "#ff0080"
-  gradient-develop-start: "#007cf0"
-  gradient-develop-end: "#00dfd8"
-  gradient-preview-start: "#7928ca"
-  gradient-preview-end: "#ff0080"
-  gradient-ship-start: "#ff4d4d"
-  gradient-ship-end: "#f9cb28"
-  selection-bg: "#171717"
-  selection-fg: "#f2f2f2"
+## 6. 字体与数字
 
-typography:
-  display-xl: { fontFamily: "Geist, Inter, system-ui", fontSize: 48px, fontWeight: 600, letterSpacing: -2.4px }
-  display-lg: { fontFamily: "Geist, Inter, system-ui", fontSize: 32px, fontWeight: 600, letterSpacing: -1.28px }
-  display-md: { fontSize: 24px, fontWeight: 600 }
-  body-md: { fontSize: 16px, fontWeight: 400, lineHeight: 24px }
-  body-sm: { fontSize: 14px, fontWeight: 400, lineHeight: 20px, letterSpacing: -0.28px }
-  caption: { fontSize: 12px, fontWeight: 400 }
-  caption-mono: { fontFamily: "Geist Mono, ui-monospace", fontSize: 12px }
-  code: { fontFamily: "Geist Mono", fontSize: 13px }
-  button-md: { fontSize: 14px, fontWeight: 500 }
-  button-lg: { fontSize: 16px, fontWeight: 500 }
+| 内容 | 建议 |
+|---|---|
+| 页面标题 | 20-24px，600，短标题。 |
+| 面板标题 | 14-16px，500/600。 |
+| 正文 | 13-14px，适合阅读。 |
+| 辅助信息 | 11-12px，低对比。 |
+| 价格/合约/时间 | 等宽字体。 |
 
-rounded:
-  xs: 4px
-  sm: 6px
-  md: 8px
-  lg: 12px
-  xl: 16px
-  pill-sm: 64px
-  pill: 100px
-  full: 9999px
+不要用视口宽度动态缩放字号；不要使用负字距。长中文标题需要换行或截断，不能挤出按钮和卡片。
 
-spacing:
-  xxs: 4px
-  xs: 8px
-  sm: 12px
-  md: 16px
-  lg: 24px
-  xl: 32px
-  2xl: 40px
-  3xl: 48px
-  4xl: 64px
-  5xl: 96px
-  6xl: 128px
-  section: 192px
+## 7. 组件规则
 
-components:
-  nav-bar: { height: 64px, padding: "12px 24px" }
-  form-input: { height: 40px, rounded: 6px }
-  form-input-sm: { height: 32px }
-  form-input-lg: { height: 48px }
-  button-primary: { rounded: pill, typography: button-lg }
-  button-primary-sm: { rounded: pill, typography: button-md }
-  nav-cta-signup: { height: 28px, rounded: 6px }
-  card-marketing: { rounded: 8px, padding: 24px }
-  ex-app-shell-row: { activeIndicator: primary, rounded: 6px }
----
-```
+| 组件 | 规则 |
+|---|---|
+| Button | 明确命令才用文字按钮；工具类操作优先图标按钮并提供 tooltip。 |
+| Badge | 用于板块、品种、触发类型、数据质量和来源。 |
+| Tabs | 用于同页面视图切换，如板块/维度/触发类型。 |
+| Table/List | 行情、资讯、报告、日历优先使用可扫描列表。 |
+| Chart | 图表应占据主要视觉空间，不放进装饰性容器。 |
+| Timeline | 决策流和报告流式输出使用时间线，但节点信息要短。 |
+| Empty/Error | 空态说明原因和下一步操作，不使用营销插画。 |
+| Order Ticket | 买开/卖开/买平/卖平必须清晰分区，价格、手数、保证金预估、手续费预估同屏显示。 |
+| Position Row | 持仓行固定展示方向、手数、均价、浮盈、保证金、风险操作。 |
+| Stock Screener | 筛选器必须显示条件、命中数、快照时间、使用的数据报告期。 |
+| Financial Table | 财务表要突出报告期、同比、环比、异常值和数据源。 |
 
-### Vercel 核心原则（源规范）
+卡片圆角保持 6-8px，除非已有组件要求更大。不要把卡片套进卡片。
 
-- **色彩**：Ink `#171717` 为 marketing 主 CTA；Link Blue `#0070f3` 为链接/成功语义；Cyan `#50e3c2`、Error `#ee0000` 为品牌梯度/语义色。
-- **字体**：Geist（400/500/600）+ Geist Mono（技术层）；Display 负字距；正文不用 mono。
-- **圆角**：Marketing CTA 用 `pill` 100px；应用内控件用 `sm` 6px / `md` 8px。
-- **间距**：4px 基准；section 192px。
-- **Elevation**：浅色站用 stacked shadow + inset hairline；**本项目 L2 刻意禁用阴影**。
-- **Do**：单一 ink 主 CTA、分层 surface、mono 仅技术标签。
-- **Don't**：不要 weight 700+、不要 icon 级渐变、不要 heavy drop-shadow。
+## 8. 数据质量展示
 
----
+所有核心数据组件都要显示更新时间或质量状态。
 
-## 2. 深色仪表盘 Token 映射（L1 → L2）
+| 状态 | UI 表达 |
+|---|---|
+| `live` | 正常低调 badge，可省略警告色。 |
+| `history` | 标注历史数据。 |
+| `reference` | 标注参考来源，如外盘参考。 |
+| `estimated` | 明确写“估算”，不得只显示数值。 |
+| `pending` | 显示待更新或待接入。 |
+| `stale` | 显示旧数据时间，使用警告语义。 |
+| `error` | 显示错误、来源和重试入口。 |
 
-本项目为 **in-app dashboard**，采用 Vercel Dashboard 极性翻转，而非 marketing 浅色站。
+报告中若使用估算或参考数据，应在对应段落说明。
 
-| Vercel 源 (L1) | 本项目 (L2) | CSS 变量 | 说明 |
-|---|---|---|---|
-| `canvas` `#ffffff` | `#000000` | `--color-canvas` | 页面真黑底 |
-| `canvas-soft` `#fafafa` | `#0a0a0a` | `--color-canvas-soft` | 面板/图表区 |
-| `primary` `#171717` (ink CTA) | `#0070f3` | `--color-primary` | Dashboard 主 CTA 用 Link Blue |
-| `ink` `#171717` | `#ededed` | `--color-ink` | 标题/强调正文 |
-| `body` `#4d4d4d` | `#a1a1a1` | `--color-body` | 次要正文 |
-| `mute` `#888888` | `#888888` | `--color-muted` | 一致 |
-| `hairline` `#ebebeb` | `#333333` | `--color-hairline` | 深色描边 |
-| `hairline-strong` `#a1a1a1` | `#404040` | `--color-hairline-strong` | 强描边 |
-| `link` `#0070f3` | `#0070f3` | `--color-link` | 一致 |
-| `link-deep` `#0761d1` | `#0761d1` | `--color-primary-active` | 一致 |
-| `link-bg-soft` `#d3e5ff` | `#0d2847` | `--color-link-bg-soft` | 深色浅底 |
-| `cyan` `#50e3c2` | `#50e3c2` | `--color-up` | 涨/成功 |
-| `error` `#ee0000` | `#ee0000` | `--color-down` | 跌/错误 |
-| stacked shadow | **无** | — | Dashboard 仅用 1px 细线 |
-| `nav-bar` 64px | TopBar 48px (`h-12`) | — | 紧凑仪表盘 |
-| marketing `pill` CTA | shadcn `rounded-md` 6–8px | — | in-app 尺度 |
+## 9. 五大板块 UI 表达
 
-### 有意保留的 L3 扩展
+板块颜色只用于辅助识别，不作为大面积背景。
 
-| Token | 值 | 用途 |
-|---|---|---|
-| `--color-timeline-*` | 五色柔和 | 仅 AI 分析时间线 |
-| `--color-surface-elevated` | `#171717` | 下拉/浮层（对应 Vercel ink） |
-| 侧栏宽 | 220px | AppShell 固定宽度 |
+| 板块 | 建议表达 |
+|---|---|
+| 黑色建材 | 中性冷灰，突出库存/需求/政策。 |
+| 有色贵金属 | 金属蓝灰，突出美元利率/库存/避险。 |
+| 农产品软商品 | 低饱和绿色，突出天气/季节/进口。 |
+| 能源化工 | 低饱和青色或琥珀，突出原油/装置/库存。 |
+| 航运运价 | 深青或海蓝点缀，突出地缘/舱位/需求。 |
 
----
+金融期货不作为 v1 导航或板块入口。
 
-## 3. 设计原则（L2 + L3）
+## 10. 关键页面设计要求
 
-1. **仪表盘克制**：像 Vercel / Linear 控制台，信息分层清晰。
-2. **单一电压色**：Vercel Blue 用于主 CTA、链接、焦点环。
-3. **细线即深度**：禁止投影；1px `#333` + `#0a0a0a` 卡片 vs `#000` 底。
-4. **数字用等宽**：价格、合约、K 线坐标用 Geist Mono / JetBrains Mono。
-5. **涨跌色受限**：`#50e3c2` / `#ee0000` 仅用于价格与 K 线，不用于按钮/链接。
-6. **AI 时间线**：五色药丸仅用于分析步骤，不作系统操作色。
+### 总览
 
----
+- 首屏展示模拟账户权益、今日盈亏、风险度、板块概览、风险提示、决策流和报告任务。
+- “下一步要看什么”应由数据驱动，而不是静态说明文字。
+- 决策流节点必须标明来源类型：行情、资讯、日历、异动、报告。
 
-## 4. 字体
+### 模拟盘
 
-| 层级 | Vercel token | 本项目 | 用途 |
-|---|---|---|---|
-| 页面标题 | display-md 24px/600 | 24px/600 | 页头 |
-| 区块标题 | display-sm 20px/600 | 18px/600 | 卡片组 |
-| 正文 | body-sm 14px | 14px（body 默认） | 内容 |
-| 注释 | caption 12px | 11–12px | 元信息 |
-| 代码/价格 | code 13px mono | 13px mono | OHLCV、合约 |
+- 下单面板与持仓/委托/成交同屏，减少来回切换。
+- 任何可点击下单入口都必须写明“模拟”。
+- 提交前展示保证金占用、手续费、滑点和成交风险预估。
+- 拒单原因必须明确，如资金不足、超最大手数、合约规则缺失。
 
-- **Sans 回退**：Geist → Inter → system-ui（`index.css` 现加载 Inter）
-- **Mono 回退**：Geist Mono → JetBrains Mono
+### 复盘
 
----
+- 复盘页以交易记录和资金曲线为主体，不做聊天页。
+- 每笔交易可以关联行情截图、资讯、报告和交易计划。
+- LLM 复盘只评价执行、纪律和风险，不承诺收益。
 
-## 5. 布局
+### 回放
 
-### AppShell（220px 侧栏）
+- 回放模式必须明确标注当前是历史训练，不显示未来数据。
+- 播放、暂停、倍速、跳转、下单操作使用紧凑工具栏。
+- 回放成交记录与普通模拟成交区分来源。
 
-```
-┌──────────┬────────────────────────────────────────────┐
-│ ThisIsMyQuant │  TopBar（搜索 h-12）                     │
-│          │────────────────────────────────────────────│
-│ 行情/报告 │              主内容区                       │
-│ …        │                                            │
-│ ● 数据源  │                                            │
-└──────────┴────────────────────────────────────────────┘
-  220px              flex-1
-```
+### A 股总览
 
-### 间距（对齐 Vercel spacing）
+- 首屏先看指数和市场宽度，再看行业/概念热力。
+- 涨跌家数、涨跌停、成交额和量能变化要比单纯指数涨跌更醒目。
+- 行业热力点击后进入行业概念页，并同步筛选成分股。
 
-`xxs 4 · xs 8 · sm 12 · md 16 · lg 24 · xl 32 · 2xl 40 · 3xl 48 · section 80`（dashboard 节距较 marketing 收紧）
+### 个股工作台
 
-### 圆角（in-app 尺度）
+- 个股页采用“价格行为 + 财务质量 + 资金流 + 事件公告 + 同行比较”结构。
+- 财报和估值必须标明报告期、TTM/静态口径和数据源。
+- LLM 个股速览必须引用行情、财务、公告或行业数据。
 
-| Token | 值 | 用途 |
-|---|---|---|
-| `--radius-sm` | 6px | 按钮、输入、导航项 |
-| `--radius-md` | 8px | 卡片（shadcn `--radius: 0.5rem`） |
-| `--radius-lg` | 12px | 大面板 |
-| `--radius-pill` | 9999px | 时间线 badge、状态点 |
+### 股票筛选器
 
----
+- 条件区与结果区同屏，结果支持保存为股票池。
+- 任何财务筛选都必须展示最新报告期，避免用户误以为是实时指标。
+- 因子打分需显示因子版本和计算日期。
 
-## 6. 组件对照（Vercel primitive → 项目实现）
+### 因子中心
 
-| Vercel 组件 | 项目实现 | 文件 |
-|---|---|---|
-| `ex-app-shell-row` | NavLink ghost + active `bg-muted/40` | `AppShell.tsx` |
-| `form-input-sm` (32px) | Input `h-9` (36px) | `TopBar.tsx`, `input.tsx` |
-| `button-primary-sm` | Button default `bg-primary` | `button.tsx` |
-| `card-marketing` | Card / `.panel` 无 shadow | `card.tsx`, `index.css` |
-| `tab-ghost` | TabsList muted 底 | `tabs.tsx` |
-| `badge-secondary` | Badge secondary | `badge.tsx` |
-| `code-editor-mockup` | ChartPanel 深色底 | `ChartPanel.tsx` |
+- 因子卡片显示方向、强度、置信度、更新时间和质量。
+- 缺失因子显示 `pending`，不要用占位数值填充。
+- 允许按板块、品种、维度筛选。
 
----
+### 资讯决策中心
 
-## 7. Do / Don't（项目）
+- 资讯列表要突出标题、时间、来源、影响品种、维度标签。
+- 同一新闻多品种影响时，用 compact badge，不拉高行高。
+- 可进入报告上下文或决策流。
 
-### Do
-- 保持真黑 `#000` 页面底
-- 主操作只用 Vercel Blue（L2 映射后的 primary）
-- 价格/代码用等宽字体
-- 图表/K 线颜色引用 CSS 变量
-- 用 shadcn 组件保持一致性
+### 异动预警中心
 
-### Don't
-- 不要引入第二个品牌动作色
-- 不要给卡片加投影（与 Vercel marketing 不同，dashboard 变体）
-- 不要把涨跌色用在按钮/链接上
-- 不要把时间线柔和色用在非 AI 场景
-- 不要在 TS/Canvas 中硬编码 hex（应读 token）
+- 异动列表按严重程度和新鲜度排序。
+- 每个预警显示触发条件、价格变化、可能归因和操作入口。
+- 快评触发后要进入报告工作流。
 
----
+### Copilot
 
-## 8. Token 落地
+- 问答界面以研究为中心，不做聊天娱乐化。
+- 回答需要引用报告、资讯或数据来源。
+- 流式输出失败时保留已生成片段和重试入口。
+
+## 11. 响应式与可访问性
+
+- 桌面优先，最小宽度下允许侧栏收缩或内容横向表格滚动。
+- 所有 icon-only 按钮必须有 tooltip 或 `aria-label`。
+- 颜色不能作为唯一信息来源，涨跌、质量、状态必须有文字或符号。
+- 文本不得与按钮、图表、卡片内容重叠。
+
+## 12. 工程落地
 
 | 文件 | 职责 |
 |---|---|
-| `frontend/src/design/tokens.css` | L2 CSS 变量 + shadcn HSL |
-| `frontend/src/index.css` | 字体、`.panel`、时间线 pill |
-| `frontend/tailwind.config.ts` | Tailwind 颜色/radius 映射 |
-| `frontend/components.json` | shadcn New York / neutral |
+| `frontend/src/design/tokens.css` | CSS 变量与主题 token。 |
+| `frontend/src/index.css` | 全局样式、字体和辅助类。 |
+| `frontend/src/components/ui/` | shadcn/ui 原子组件。 |
+| `frontend/src/components/AppShell.tsx` | 侧栏导航和应用框架。 |
+| `frontend/src/pages/` | 页面级产品体验。 |
+| `frontend/e2e/` | UI mock E2E 对关键页面做可访问性冒烟。 |
 
----
-
-## 9. UI 合规审查（2026-06-24）
-
-对照 **L2 深色映射 + L3 产品规则** 审查 `frontend/src/`。
-
-### 9.1 符合 ✅
-
-| 项 | 证据 |
-|---|---|
-| 真黑页面底 | `tokens.css` `--background: 0 0% 0%`；`AppShell` `bg-background` |
-| 无卡片阴影 | 全库无 `shadow-*`（src 内）；`.panel` 仅 border |
-| Vercel Blue 主 CTA | `--color-primary: #0070f3`；Button `bg-primary` |
-| Link / 焦点环 | `--ring: 211 100% 48%` |
-| 细线分割 | `border-border` → `--color-hairline #333` |
-| 侧栏 220px | `AppShell` `w-[220px]` |
-| 涨跌色值正确 | token `#50e3c2` / `#ee0000` 与 Vercel cyan/error 一致 |
-| AI 时间线专用色 | `AnalysisTimeline` + `.pill-*` 类 |
-| 卡片圆角 8–12px | Card `rounded-lg`；符合 in-app `md/lg` |
-| 字体回退链 | `--font-sans` / `--font-mono` 定义正确 |
-| 深色模式固定 | shadcn HSL 变量为 dark 值 |
-
-### 9.2 部分符合 ⚠️
-
-| 项 | 规范 | 现状 | 建议 |
-|---|---|---|---|
-| 主 CTA 色语义 | L1 ink `#171717`；L2 映射为 blue | 已按 L2 执行 | 文档已说明，无需改 |
-| 输入框高度 | `form-input-sm` 32px / `form-input` 40px | Input 默认 `h-9`(36px)；TopBar 同 | 改为 `h-8`(32) 或 `h-10`(40) 对齐 Vercel 档位 |
-| TopBar 高度 | Vercel nav 64px | `h-12`(48px) | 可接受（dashboard 紧凑）；若需严格对齐改为 `h-16` |
-| 按钮圆角 | in-app `rounded.sm` 6px | shadcn `rounded-md` (~8px) | 可改为 `rounded-[6px]` 或 `--radius-sm` |
-| 导航激活态 | `ex-app-shell-row` 左缘 primary 指示条 | 整行 `bg-muted/40` | 可选：加 `border-l-2 border-primary` |
-| 字体加载 | Geist 本体 | 仅 Google Inter + JetBrains | 接入 `geist` npm 或 `@fontsource` |
-| 间距 token | Vercel `md:16px` | `--space-md:20px` | 将 `--space-md` 改为 `16px` 与源规范一致 |
-| Badge 圆角 | Vercel `rounded.full` | `rounded-md` | 元数据 badge 可改 `rounded-full` |
-| 文档状态文案 | 数据源描述 | 侧栏仍写「AKShare」 | 更新为「新浪 · 金十」等与后端一致 |
-
-### 9.3 不符合 ❌
-
-| 项 | 规范 | 现状 | 修复 |
-|---|---|---|---|
-| ChartPanel 硬编码色 | 应使用 CSS 变量 | `#0a0a0a`、`#888`、`#262626`、`#333`、`#50e3c2`、`#ee0000` 内联 | 读 `getComputedStyle(document.documentElement).getPropertyValue('--color-*')` 或集中 `chartTheme` 常量 |
-| Badge up/down 硬编码 | token 衍生 | `bg-[#0d3329]`、`bg-[#3d0a0a]` | 新增 `--color-up-bg` / `--color-down-bg` |
-| index.css pill 文字色 | 应用 token | `color: #171717` 硬编码 | 改为 `var(--color-ink)` 或专用 `--color-pill-fg` |
-| DESIGN 侧栏示意 | 「● CTP」 | 实际为 AKShare/金十 | 更新文档 ASCII 图（§5 已修正方向） |
-
-### 9.4 合规评分
-
-| 维度 | 得分 | 说明 |
-|---|---|---|
-| 色彩系统 | 85% | token 完整；ChartPanel/Badge 有硬编码 |
-| 字体排版 | 75% | 层级合理；未加载 Geist 本体 |
-| 布局间距 | 80% | 侧栏/面板 OK；`space-md` 偏差 |
-| 组件形态 | 78% | shadcn 一致；圆角/输入高度略偏 |
-| 深度/Elevation | 95% | 无阴影，符合 L2 |
-| **综合** | **82%** | 核心仪表盘气质达标；细节 token 化待补 |
-
-### 9.5 优先修复清单
-
-1. **P0** — `ChartPanel.tsx`：K 线/网格/背景色改为读取 `tokens.css` 变量
-2. **P1** — `badge.tsx`：up/down 背景色 token 化
-3. **P1** — `tokens.css`：`--space-md: 16px`；可选增加 `--color-up-bg` / `--color-down-bg`
-4. **P2** — 加载 Geist 字体；Input 高度对齐 32/40px 档
-5. **P2** — `AppShell` 导航 active 左缘指示条；侧栏状态文案更新
-
----
-
-## 10. 可访问性
-
-- 正文对比：`#ededed` on `#000` ≈ 15:1（AAA）
-- 主 CTA 高度：Button default `h-9`(36px)，lg `h-10`(40px) — 建议 primary 用 lg
-- 焦点环：`ring-primary`（Vercel Blue）
-- 时间线药丸带文字标签，不依赖颜色单独传达信息
+新增 UI 时，先查是否已有 shadcn 或本地组件可复用；只有当重复复杂度明确出现时再抽象新组件。

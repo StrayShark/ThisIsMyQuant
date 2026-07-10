@@ -2,14 +2,20 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::config::UserPreferences;
 use crate::engine::dimensions;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    dt_to_iso, AnalysisReport, CalendarEvent, Contract, DimensionFact, FollowupMessage, KLine,
-    LiquiditySnapshot, NewsClassification, NewsClassificationView, NewsItemView, NewsRecord, Tick,
+    dt_to_iso, AnalysisReport, CalendarEvent, Contract, DatabaseSummary, DatabaseTableStats,
+    DimensionFact, FollowupMessage, KLine, LiquiditySnapshot, NewsClassification,
+    NewsClassificationView, NewsItemView, NewsRecord, SimAccount, SimContractRule,
+    SimEquitySnapshot, SimJournalEntry, SimOrder, SimPosition, SimRiskEvent, SimRiskRule, SimTrade,
+    StockBar, StockBoard, StockBoardMember, StockBoardSnapshot, StockFactorSnapshot,
+    StockFinancialMetric, StockIndexBar, StockMarketBreadth, StockPaperAccount, StockPaperOrder,
+    StockPaperPosition, StockPaperTrade, StockScreenResult, StockScreenTemplate, StockSymbol,
+    StockValuationSnapshot, StockWatchlist, Tick,
 };
 
 pub struct Database {
@@ -156,7 +162,380 @@ impl Database {
                 model TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
-            ",
+            CREATE TABLE IF NOT EXISTS sim_accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                currency TEXT NOT NULL DEFAULT 'CNY',
+                initial_balance REAL NOT NULL,
+                cash_balance REAL NOT NULL,
+                equity REAL NOT NULL,
+                margin_used REAL NOT NULL DEFAULT 0,
+                realized_pnl REAL NOT NULL DEFAULT 0,
+                unrealized_pnl REAL NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sim_contract_rules (
+                symbol TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                exchange TEXT NOT NULL,
+                contract_multiplier REAL NOT NULL,
+                price_tick REAL NOT NULL,
+                margin_rate_long REAL NOT NULL,
+                margin_rate_short REAL NOT NULL,
+                commission_mode TEXT NOT NULL,
+                commission_open REAL NOT NULL,
+                commission_close REAL NOT NULL,
+                commission_close_today REAL NOT NULL,
+                min_order_qty INTEGER NOT NULL DEFAULT 0,
+                lot_size INTEGER NOT NULL DEFAULT 1,
+                max_order_qty INTEGER NOT NULL DEFAULT 0,
+                daily_price_limit_up REAL NOT NULL DEFAULT 0,
+                daily_price_limit_down REAL NOT NULL DEFAULT 0,
+                default_slippage_ticks REAL NOT NULL DEFAULT 0,
+                is_custom INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS sim_risk_rules (
+                id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                symbol TEXT,
+                rule_type TEXT NOT NULL,
+                threshold REAL NOT NULL,
+                action TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_sim_risk_rules_account
+                ON sim_risk_rules(account_id);
+            CREATE TABLE IF NOT EXISTS sim_risk_events (
+                id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                rule_id TEXT NOT NULL,
+                triggered_at TEXT NOT NULL,
+                description TEXT NOT NULL,
+                action_taken TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_sim_risk_events_account
+                ON sim_risk_events(account_id, triggered_at DESC);
+            CREATE TABLE IF NOT EXISTS sim_orders (
+                id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                name TEXT NOT NULL,
+                side TEXT NOT NULL,
+                offset TEXT NOT NULL,
+                order_type TEXT NOT NULL,
+                price REAL,
+                trigger_price REAL,
+                stop_loss_price REAL,
+                take_profit_price REAL,
+                oco_group_id TEXT,
+                parent_order_id TEXT,
+                tif TEXT,
+                quantity INTEGER NOT NULL,
+                filled_quantity INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                reason TEXT,
+                source TEXT NOT NULL DEFAULT 'manual',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_sim_orders_account
+                ON sim_orders(account_id, status, created_at DESC);
+            CREATE TABLE IF NOT EXISTS sim_trades (
+                id TEXT PRIMARY KEY,
+                order_id TEXT NOT NULL,
+                account_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                name TEXT NOT NULL,
+                side TEXT NOT NULL,
+                offset TEXT NOT NULL,
+                price REAL NOT NULL,
+                quantity INTEGER NOT NULL,
+                commission REAL NOT NULL,
+                slippage REAL NOT NULL DEFAULT 0,
+                realized_pnl REAL NOT NULL DEFAULT 0,
+                traded_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_sim_trades_account
+                ON sim_trades(account_id, traded_at DESC);
+            CREATE TABLE IF NOT EXISTS sim_positions (
+                account_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                name TEXT NOT NULL,
+                position_side TEXT NOT NULL,
+                today_qty INTEGER NOT NULL DEFAULT 0,
+                history_qty INTEGER NOT NULL DEFAULT 0,
+                total_qty INTEGER NOT NULL DEFAULT 0,
+                avg_price REAL NOT NULL,
+                margin REAL NOT NULL,
+                unrealized_pnl REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (account_id, symbol, position_side)
+            );
+            CREATE TABLE IF NOT EXISTS sim_equity_snapshots (
+                account_id TEXT NOT NULL,
+                snapshot_at TEXT NOT NULL,
+                equity REAL NOT NULL,
+                cash_balance REAL NOT NULL,
+                margin_used REAL NOT NULL,
+                realized_pnl REAL NOT NULL,
+                unrealized_pnl REAL NOT NULL,
+                risk_ratio REAL NOT NULL,
+                PRIMARY KEY (account_id, snapshot_at)
+            );
+            CREATE INDEX IF NOT EXISTS idx_sim_equity_account
+                ON sim_equity_snapshots(account_id, snapshot_at DESC);
+            CREATE TABLE IF NOT EXISTS sim_journal_entries (
+                id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                symbol TEXT,
+                trade_id TEXT,
+                report_id TEXT,
+                title TEXT NOT NULL,
+                thesis TEXT,
+                execution_review TEXT,
+                emotion_tags TEXT,
+                score INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_sim_journal_account
+                ON sim_journal_entries(account_id, created_at DESC);
+            CREATE TABLE IF NOT EXISTS sim_replay_sessions (
+                id TEXT PRIMARY KEY DEFAULT 'default',
+                symbol TEXT NOT NULL,
+                interval TEXT NOT NULL,
+                replay_date TEXT NOT NULL,
+                current_index INTEGER NOT NULL DEFAULT 0,
+                speed INTEGER NOT NULL DEFAULT 1,
+                running INTEGER NOT NULL DEFAULT 0,
+                account_id TEXT,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS stock_symbols (
+                ts_code TEXT PRIMARY KEY,
+                symbol TEXT NOT NULL,
+                name TEXT NOT NULL,
+                exchange TEXT NOT NULL,
+                market TEXT,
+                industry TEXT,
+                list_date TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                source TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_symbols_industry ON stock_symbols(industry);
+            CREATE INDEX IF NOT EXISTS idx_stock_symbols_name ON stock_symbols(name);
+            CREATE INDEX IF NOT EXISTS idx_stock_symbols_exchange ON stock_symbols(exchange);
+            CREATE TABLE IF NOT EXISTS stock_daily_bars (
+                ts_code TEXT NOT NULL,
+                trade_date TEXT NOT NULL,
+                open REAL,
+                high REAL,
+                low REAL,
+                close REAL,
+                pre_close REAL,
+                pct_chg REAL,
+                volume REAL,
+                amount REAL,
+                turnover_rate REAL,
+                adj_factor REAL,
+                adjustment TEXT NOT NULL DEFAULT 'none',
+                source TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (ts_code, trade_date, adjustment)
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_daily_bars_date ON stock_daily_bars(trade_date);
+            CREATE INDEX IF NOT EXISTS idx_stock_daily_bars_ts ON stock_daily_bars(ts_code, trade_date DESC);
+            CREATE TABLE IF NOT EXISTS stock_index_daily_bars (
+                index_code TEXT NOT NULL,
+                trade_date TEXT NOT NULL,
+                open REAL,
+                high REAL,
+                low REAL,
+                close REAL,
+                pct_chg REAL,
+                volume REAL,
+                amount REAL,
+                source TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (index_code, trade_date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_index_daily_bars_date ON stock_index_daily_bars(trade_date);
+            CREATE TABLE IF NOT EXISTS stock_boards (
+                board_code TEXT PRIMARY KEY,
+                board_name TEXT NOT NULL,
+                board_type TEXT NOT NULL,
+                source TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_boards_type ON stock_boards(board_type);
+            CREATE TABLE IF NOT EXISTS stock_board_members (
+                board_code TEXT NOT NULL,
+                ts_code TEXT NOT NULL,
+                weight REAL,
+                source TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (board_code, ts_code)
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_board_members_ts ON stock_board_members(ts_code);
+            CREATE TABLE IF NOT EXISTS stock_board_snapshots (
+                board_code TEXT NOT NULL,
+                trade_date TEXT NOT NULL,
+                pct_chg REAL,
+                amount REAL,
+                turnover_rate REAL,
+                net_flow REAL,
+                up_count INTEGER,
+                down_count INTEGER,
+                source TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (board_code, trade_date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_board_snapshots_date ON stock_board_snapshots(trade_date);
+            CREATE TABLE IF NOT EXISTS stock_financial_metrics (
+                ts_code TEXT NOT NULL,
+                report_period TEXT NOT NULL,
+                report_type TEXT,
+                revenue REAL,
+                revenue_yoy REAL,
+                net_profit REAL,
+                net_profit_yoy REAL,
+                roe REAL,
+                gross_margin REAL,
+                debt_ratio REAL,
+                operating_cash_flow REAL,
+                eps REAL,
+                source TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (ts_code, report_period)
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_financial_metrics_period ON stock_financial_metrics(ts_code, report_period DESC);
+            CREATE TABLE IF NOT EXISTS stock_valuation_snapshots (
+                ts_code TEXT NOT NULL,
+                trade_date TEXT NOT NULL,
+                pe_ttm REAL,
+                pb REAL,
+                ps_ttm REAL,
+                dividend_yield REAL,
+                market_cap REAL,
+                float_market_cap REAL,
+                pe_percentile REAL,
+                pb_percentile REAL,
+                source TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (ts_code, trade_date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_valuation_snapshots_date ON stock_valuation_snapshots(ts_code, trade_date DESC);
+            CREATE TABLE IF NOT EXISTS stock_factor_snapshots (
+                ts_code TEXT NOT NULL,
+                factor_date TEXT NOT NULL,
+                momentum REAL,
+                quality REAL,
+                valuation REAL,
+                growth REAL,
+                volatility REAL,
+                liquidity REAL,
+                capital_flow REAL,
+                score REAL,
+                factor_version TEXT NOT NULL,
+                source TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (ts_code, factor_date, factor_version)
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_factor_snapshots_date ON stock_factor_snapshots(ts_code, factor_date DESC);
+            CREATE TABLE IF NOT EXISTS stock_screen_templates (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                criteria_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS stock_screen_results (
+                id TEXT PRIMARY KEY,
+                template_id TEXT,
+                name TEXT NOT NULL,
+                criteria_json TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                trade_date TEXT,
+                report_period TEXT,
+                source_summary TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_screen_results_created ON stock_screen_results(created_at DESC);
+            CREATE TABLE IF NOT EXISTS stock_watchlists (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                symbols_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS stock_paper_accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                initial_balance REAL NOT NULL,
+                cash_balance REAL NOT NULL,
+                market_value REAL NOT NULL DEFAULT 0,
+                total_equity REAL NOT NULL,
+                total_cost REAL NOT NULL DEFAULT 0,
+                realized_pnl REAL NOT NULL DEFAULT 0,
+                unrealized_pnl REAL NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS stock_paper_orders (
+                id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                ts_code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                side TEXT NOT NULL,
+                order_type TEXT NOT NULL,
+                price REAL,
+                quantity INTEGER NOT NULL,
+                filled_quantity INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                reason TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_paper_orders_account
+                ON stock_paper_orders(account_id, status, created_at DESC);
+            CREATE TABLE IF NOT EXISTS stock_paper_positions (
+                account_id TEXT NOT NULL,
+                ts_code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 0,
+                available_quantity INTEGER NOT NULL DEFAULT 0,
+                avg_cost REAL NOT NULL DEFAULT 0,
+                total_cost REAL NOT NULL DEFAULT 0,
+                market_value REAL NOT NULL DEFAULT 0,
+                unrealized_pnl REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (account_id, ts_code)
+            );
+            CREATE TABLE IF NOT EXISTS stock_paper_trades (
+                id TEXT PRIMARY KEY,
+                order_id TEXT NOT NULL,
+                account_id TEXT NOT NULL,
+                ts_code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                side TEXT NOT NULL,
+                price REAL NOT NULL,
+                quantity INTEGER NOT NULL,
+                commission REAL NOT NULL DEFAULT 0,
+                traded_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_paper_trades_account
+                ON stock_paper_trades(account_id, traded_at DESC);
+        ",
         )?;
         for (code, label, desc) in dimensions::seed_rows() {
             conn.execute(
@@ -167,6 +546,46 @@ impl Database {
         let _ = conn.execute("ALTER TABLE reports ADD COLUMN dimension_summary TEXT", []);
         let _ = conn.execute("ALTER TABLE reports ADD COLUMN news_ids TEXT", []);
         let _ = conn.execute("ALTER TABLE reports ADD COLUMN anomaly_reason TEXT", []);
+        // 模拟盘 schema 增量扩展（忽略已存在列的错误）
+        let _ = conn.execute(
+            "ALTER TABLE sim_contract_rules ADD COLUMN min_order_qty INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE sim_contract_rules ADD COLUMN lot_size INTEGER NOT NULL DEFAULT 1",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE sim_contract_rules ADD COLUMN max_order_qty INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute("ALTER TABLE sim_contract_rules ADD COLUMN daily_price_limit_up REAL NOT NULL DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE sim_contract_rules ADD COLUMN daily_price_limit_down REAL NOT NULL DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE sim_contract_rules ADD COLUMN default_slippage_ticks REAL NOT NULL DEFAULT 0", []);
+        let _ = conn.execute(
+            "ALTER TABLE sim_contract_rules ADD COLUMN is_custom INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute("ALTER TABLE sim_orders ADD COLUMN stop_loss_price REAL", []);
+        let _ = conn.execute(
+            "ALTER TABLE sim_orders ADD COLUMN take_profit_price REAL",
+            [],
+        );
+        let _ = conn.execute("ALTER TABLE sim_orders ADD COLUMN oco_group_id TEXT", []);
+        let _ = conn.execute("ALTER TABLE sim_orders ADD COLUMN parent_order_id TEXT", []);
+        let _ = conn.execute("ALTER TABLE sim_orders ADD COLUMN tif TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE sim_orders ADD COLUMN condition_operator TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE sim_orders ADD COLUMN trailing_distance_ticks REAL",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE sim_orders ADD COLUMN trailing_reference_price REAL",
+            [],
+        );
         Ok(())
     }
 
@@ -834,6 +1253,650 @@ impl Database {
         )?;
         Ok(())
     }
+
+    pub fn save_sim_account(&self, account: &SimAccount) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO sim_accounts
+             (id, name, currency, initial_balance, cash_balance, equity, margin_used, realized_pnl, unrealized_pnl, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                account.id,
+                account.name,
+                account.currency,
+                account.initial_balance,
+                account.cash_balance,
+                account.equity,
+                account.margin_used,
+                account.realized_pnl,
+                account.unrealized_pnl,
+                account.status,
+                account.created_at,
+                account.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sim_accounts(&self) -> AppResult<Vec<SimAccount>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, currency, initial_balance, cash_balance, equity, margin_used, realized_pnl, unrealized_pnl, status, created_at, updated_at
+             FROM sim_accounts ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(SimAccount {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                currency: row.get(2)?,
+                initial_balance: row.get(3)?,
+                cash_balance: row.get(4)?,
+                equity: row.get(5)?,
+                margin_used: row.get(6)?,
+                realized_pnl: row.get(7)?,
+                unrealized_pnl: row.get(8)?,
+                status: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_sim_account(&self, id: &str) -> AppResult<Option<SimAccount>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, currency, initial_balance, cash_balance, equity, margin_used, realized_pnl, unrealized_pnl, status, created_at, updated_at
+             FROM sim_accounts WHERE id = ?1 LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(SimAccount {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                currency: row.get(2)?,
+                initial_balance: row.get(3)?,
+                cash_balance: row.get(4)?,
+                equity: row.get(5)?,
+                margin_used: row.get(6)?,
+                realized_pnl: row.get(7)?,
+                unrealized_pnl: row.get(8)?,
+                status: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn save_sim_contract_rule(&self, rule: &SimContractRule) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO sim_contract_rules
+             (symbol, name, exchange, contract_multiplier, price_tick, margin_rate_long, margin_rate_short, commission_mode, commission_open, commission_close, commission_close_today, min_order_qty, lot_size, max_order_qty, daily_price_limit_up, daily_price_limit_down, default_slippage_ticks, is_custom, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+            params![
+                rule.symbol,
+                rule.name,
+                rule.exchange,
+                rule.contract_multiplier,
+                rule.price_tick,
+                rule.margin_rate_long,
+                rule.margin_rate_short,
+                rule.commission_mode,
+                rule.commission_open,
+                rule.commission_close,
+                rule.commission_close_today,
+                rule.min_order_qty,
+                rule.lot_size,
+                rule.max_order_qty,
+                rule.daily_price_limit_up,
+                rule.daily_price_limit_down,
+                rule.default_slippage_ticks,
+                rule.is_custom,
+                rule.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_sim_contract_rule(&self, symbol: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "DELETE FROM sim_contract_rules WHERE symbol = ?1",
+            params![symbol],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sim_contract_rules(&self) -> AppResult<Vec<SimContractRule>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT symbol, name, exchange, contract_multiplier, price_tick, margin_rate_long, margin_rate_short, commission_mode, commission_open, commission_close, commission_close_today, min_order_qty, lot_size, max_order_qty, daily_price_limit_up, daily_price_limit_down, default_slippage_ticks, is_custom, updated_at
+             FROM sim_contract_rules ORDER BY symbol",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(SimContractRule {
+                symbol: row.get(0)?,
+                name: row.get(1)?,
+                exchange: row.get(2)?,
+                contract_multiplier: row.get(3)?,
+                price_tick: row.get(4)?,
+                margin_rate_long: row.get(5)?,
+                margin_rate_short: row.get(6)?,
+                commission_mode: row.get(7)?,
+                commission_open: row.get(8)?,
+                commission_close: row.get(9)?,
+                commission_close_today: row.get(10)?,
+                min_order_qty: row.get(11)?,
+                lot_size: row.get(12)?,
+                max_order_qty: row.get(13)?,
+                daily_price_limit_up: row.get(14)?,
+                daily_price_limit_down: row.get(15)?,
+                default_slippage_ticks: row.get(16)?,
+                is_custom: row.get::<_, i64>(17)? != 0,
+                updated_at: row.get(18)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_sim_contract_rule(&self, symbol: &str) -> AppResult<Option<SimContractRule>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT symbol, name, exchange, contract_multiplier, price_tick, margin_rate_long, margin_rate_short, commission_mode, commission_open, commission_close, commission_close_today, min_order_qty, lot_size, max_order_qty, daily_price_limit_up, daily_price_limit_down, default_slippage_ticks, is_custom, updated_at
+             FROM sim_contract_rules WHERE symbol = ?1 LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(params![symbol], |row| {
+            Ok(SimContractRule {
+                symbol: row.get(0)?,
+                name: row.get(1)?,
+                exchange: row.get(2)?,
+                contract_multiplier: row.get(3)?,
+                price_tick: row.get(4)?,
+                margin_rate_long: row.get(5)?,
+                margin_rate_short: row.get(6)?,
+                commission_mode: row.get(7)?,
+                commission_open: row.get(8)?,
+                commission_close: row.get(9)?,
+                commission_close_today: row.get(10)?,
+                min_order_qty: row.get(11)?,
+                lot_size: row.get(12)?,
+                max_order_qty: row.get(13)?,
+                daily_price_limit_up: row.get(14)?,
+                daily_price_limit_down: row.get(15)?,
+                default_slippage_ticks: row.get(16)?,
+                is_custom: row.get::<_, i64>(17)? != 0,
+                updated_at: row.get(18)?,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn save_sim_order(&self, order: &SimOrder) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO sim_orders
+             (id, account_id, symbol, name, side, offset, order_type, price, trigger_price, stop_loss_price, take_profit_price, oco_group_id, parent_order_id, tif, condition_operator, trailing_distance_ticks, trailing_reference_price, quantity, filled_quantity, status, reason, source, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+            params![
+                order.id,
+                order.account_id,
+                order.symbol,
+                order.name,
+                order.side,
+                order.offset,
+                order.order_type,
+                order.price,
+                order.trigger_price,
+                order.stop_loss_price,
+                order.take_profit_price,
+                order.oco_group_id,
+                order.parent_order_id,
+                order.tif,
+                order.condition_operator,
+                order.trailing_distance_ticks,
+                order.trailing_reference_price,
+                order.quantity,
+                order.filled_quantity,
+                order.status,
+                order.reason,
+                order.source,
+                order.created_at,
+                order.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sim_orders(
+        &self,
+        account_id: Option<&str>,
+        status: Option<&str>,
+        limit: i64,
+    ) -> AppResult<Vec<SimOrder>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let sql = if account_id.is_some() && status.is_some() {
+            "SELECT id, account_id, symbol, name, side, offset, order_type, price, trigger_price, stop_loss_price, take_profit_price, oco_group_id, parent_order_id, tif, condition_operator, trailing_distance_ticks, trailing_reference_price, quantity, filled_quantity, status, reason, source, created_at, updated_at
+             FROM sim_orders WHERE account_id = ?1 AND status = ?2 ORDER BY created_at DESC LIMIT ?3"
+        } else if account_id.is_some() {
+            "SELECT id, account_id, symbol, name, side, offset, order_type, price, trigger_price, stop_loss_price, take_profit_price, oco_group_id, parent_order_id, tif, condition_operator, trailing_distance_ticks, trailing_reference_price, quantity, filled_quantity, status, reason, source, created_at, updated_at
+             FROM sim_orders WHERE account_id = ?1 ORDER BY created_at DESC LIMIT ?2"
+        } else if status.is_some() {
+            "SELECT id, account_id, symbol, name, side, offset, order_type, price, trigger_price, stop_loss_price, take_profit_price, oco_group_id, parent_order_id, tif, condition_operator, trailing_distance_ticks, trailing_reference_price, quantity, filled_quantity, status, reason, source, created_at, updated_at
+             FROM sim_orders WHERE status = ?1 ORDER BY created_at DESC LIMIT ?2"
+        } else {
+            "SELECT id, account_id, symbol, name, side, offset, order_type, price, trigger_price, stop_loss_price, take_profit_price, oco_group_id, parent_order_id, tif, condition_operator, trailing_distance_ticks, trailing_reference_price, quantity, filled_quantity, status, reason, source, created_at, updated_at
+             FROM sim_orders ORDER BY created_at DESC LIMIT ?1"
+        };
+        let mut stmt = conn.prepare(sql)?;
+        let rows = match (account_id, status) {
+            (Some(a), Some(s)) => stmt.query_map(params![a, s, limit], row_to_sim_order)?,
+            (Some(a), None) => stmt.query_map(params![a, limit], row_to_sim_order)?,
+            (None, Some(s)) => stmt.query_map(params![s, limit], row_to_sim_order)?,
+            (None, None) => stmt.query_map(params![limit], row_to_sim_order)?,
+        };
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_sim_order(&self, id: &str) -> AppResult<Option<SimOrder>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, account_id, symbol, name, side, offset, order_type, price, trigger_price, stop_loss_price, take_profit_price, oco_group_id, parent_order_id, tif, condition_operator, trailing_distance_ticks, trailing_reference_price, quantity, filled_quantity, status, reason, source, created_at, updated_at
+             FROM sim_orders WHERE id = ?1 LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(params![id], row_to_sim_order)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn save_sim_trade(&self, trade: &SimTrade) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO sim_trades
+             (id, order_id, account_id, symbol, name, side, offset, price, quantity, commission, slippage, realized_pnl, traded_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                trade.id,
+                trade.order_id,
+                trade.account_id,
+                trade.symbol,
+                trade.name,
+                trade.side,
+                trade.offset,
+                trade.price,
+                trade.quantity,
+                trade.commission,
+                trade.slippage,
+                trade.realized_pnl,
+                trade.traded_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sim_trades(
+        &self,
+        account_id: Option<&str>,
+        symbol: Option<&str>,
+        limit: i64,
+    ) -> AppResult<Vec<SimTrade>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = match (account_id, symbol) {
+            (Some(a), Some(s)) => (
+                "SELECT id, order_id, account_id, symbol, name, side, offset, price, quantity, commission, slippage, realized_pnl, traded_at
+                 FROM sim_trades WHERE account_id = ?1 AND symbol = ?2 ORDER BY traded_at DESC LIMIT ?3",
+                vec![Box::new(a.to_string()), Box::new(s.to_string()), Box::new(limit)],
+            ),
+            (Some(a), None) => (
+                "SELECT id, order_id, account_id, symbol, name, side, offset, price, quantity, commission, slippage, realized_pnl, traded_at
+                 FROM sim_trades WHERE account_id = ?1 ORDER BY traded_at DESC LIMIT ?2",
+                vec![Box::new(a.to_string()), Box::new(limit)],
+            ),
+            (None, Some(s)) => (
+                "SELECT id, order_id, account_id, symbol, name, side, offset, price, quantity, commission, slippage, realized_pnl, traded_at
+                 FROM sim_trades WHERE symbol = ?1 ORDER BY traded_at DESC LIMIT ?2",
+                vec![Box::new(s.to_string()), Box::new(limit)],
+            ),
+            (None, None) => (
+                "SELECT id, order_id, account_id, symbol, name, side, offset, price, quantity, commission, slippage, realized_pnl, traded_at
+                 FROM sim_trades ORDER BY traded_at DESC LIMIT ?1",
+                vec![Box::new(limit)],
+            ),
+        };
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map(&*param_refs, row_to_sim_trade)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn save_sim_position(&self, position: &SimPosition) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO sim_positions
+             (account_id, symbol, name, position_side, today_qty, history_qty, total_qty, avg_price, margin, unrealized_pnl, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                position.account_id,
+                position.symbol,
+                position.name,
+                position.position_side,
+                position.today_qty,
+                position.history_qty,
+                position.total_qty,
+                position.avg_price,
+                position.margin,
+                position.unrealized_pnl,
+                position.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_sim_position(
+        &self,
+        account_id: &str,
+        symbol: &str,
+        position_side: &str,
+    ) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "DELETE FROM sim_positions WHERE account_id = ?1 AND symbol = ?2 AND position_side = ?3",
+            params![account_id, symbol, position_side],
+        )?;
+        Ok(())
+    }
+
+    pub fn save_sim_risk_rule(&self, rule: &SimRiskRule) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO sim_risk_rules
+             (id, account_id, scope, symbol, rule_type, threshold, action, enabled, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                rule.id,
+                rule.account_id,
+                rule.scope,
+                rule.symbol,
+                rule.rule_type,
+                rule.threshold,
+                rule.action,
+                rule.enabled,
+                rule.created_at,
+                rule.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sim_risk_rules(&self, account_id: Option<&str>) -> AppResult<Vec<SimRiskRule>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let sql = if account_id.is_some() {
+            "SELECT id, account_id, scope, symbol, rule_type, threshold, action, enabled, created_at, updated_at
+             FROM sim_risk_rules WHERE account_id = ?1 ORDER BY created_at DESC"
+        } else {
+            "SELECT id, account_id, scope, symbol, rule_type, threshold, action, enabled, created_at, updated_at
+             FROM sim_risk_rules ORDER BY created_at DESC"
+        };
+        let mut stmt = conn.prepare(sql)?;
+        let rows = if let Some(a) = account_id {
+            stmt.query_map(params![a], row_to_sim_risk_rule)?
+        } else {
+            stmt.query_map([], row_to_sim_risk_rule)?
+        };
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_sim_risk_rule(&self, id: &str) -> AppResult<Option<SimRiskRule>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, account_id, scope, symbol, rule_type, threshold, action, enabled, created_at, updated_at
+             FROM sim_risk_rules WHERE id = ?1 LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(params![id], row_to_sim_risk_rule)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn delete_sim_risk_rule(&self, id: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute("DELETE FROM sim_risk_rules WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn save_sim_risk_event(&self, event: &SimRiskEvent) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO sim_risk_events
+             (id, account_id, rule_id, triggered_at, description, action_taken)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                event.id,
+                event.account_id,
+                event.rule_id,
+                event.triggered_at,
+                event.description,
+                event.action_taken,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sim_risk_events(
+        &self,
+        account_id: &str,
+        limit: i64,
+    ) -> AppResult<Vec<SimRiskEvent>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, account_id, rule_id, triggered_at, description, action_taken
+             FROM sim_risk_events WHERE account_id = ?1 ORDER BY triggered_at DESC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![account_id, limit], row_to_sim_risk_event)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn list_sim_positions(&self, account_id: Option<&str>) -> AppResult<Vec<SimPosition>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = if let Some(a) = account_id {
+            (
+                "SELECT account_id, symbol, name, position_side, today_qty, history_qty, total_qty, avg_price, margin, unrealized_pnl, updated_at
+                 FROM sim_positions WHERE account_id = ?1 ORDER BY symbol",
+                vec![Box::new(a.to_string())],
+            )
+        } else {
+            (
+                "SELECT account_id, symbol, name, position_side, today_qty, history_qty, total_qty, avg_price, margin, unrealized_pnl, updated_at
+                 FROM sim_positions ORDER BY account_id, symbol",
+                vec![],
+            )
+        };
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map(&*param_refs, row_to_sim_position)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn save_sim_equity_snapshot(&self, snapshot: &SimEquitySnapshot) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO sim_equity_snapshots
+             (account_id, snapshot_at, equity, cash_balance, margin_used, realized_pnl, unrealized_pnl, risk_ratio)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                snapshot.account_id,
+                snapshot.snapshot_at,
+                snapshot.equity,
+                snapshot.cash_balance,
+                snapshot.margin_used,
+                snapshot.realized_pnl,
+                snapshot.unrealized_pnl,
+                snapshot.risk_ratio,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sim_equity_snapshots(
+        &self,
+        account_id: &str,
+        limit: i64,
+    ) -> AppResult<Vec<SimEquitySnapshot>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT account_id, snapshot_at, equity, cash_balance, margin_used, realized_pnl, unrealized_pnl, risk_ratio
+             FROM sim_equity_snapshots WHERE account_id = ?1 ORDER BY snapshot_at DESC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![account_id, limit], |row| {
+            Ok(SimEquitySnapshot {
+                account_id: row.get(0)?,
+                snapshot_at: row.get(1)?,
+                equity: row.get(2)?,
+                cash_balance: row.get(3)?,
+                margin_used: row.get(4)?,
+                realized_pnl: row.get(5)?,
+                unrealized_pnl: row.get(6)?,
+                risk_ratio: row.get(7)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn save_sim_journal_entry(&self, entry: &SimJournalEntry) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO sim_journal_entries
+             (id, account_id, symbol, trade_id, report_id, title, thesis, execution_review, emotion_tags, score, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                entry.id,
+                entry.account_id,
+                entry.symbol,
+                entry.trade_id,
+                entry.report_id,
+                entry.title,
+                entry.thesis,
+                entry.execution_review,
+                entry.emotion_tags,
+                entry.score,
+                entry.created_at,
+                entry.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sim_journal_entries(
+        &self,
+        account_id: Option<&str>,
+        symbol: Option<&str>,
+        limit: i64,
+    ) -> AppResult<Vec<SimJournalEntry>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = match (account_id, symbol) {
+            (Some(a), Some(s)) => (
+                "SELECT id, account_id, symbol, trade_id, report_id, title, thesis, execution_review, emotion_tags, score, created_at, updated_at
+                 FROM sim_journal_entries WHERE account_id = ?1 AND symbol = ?2 ORDER BY created_at DESC LIMIT ?3",
+                vec![Box::new(a.to_string()), Box::new(s.to_string()), Box::new(limit)],
+            ),
+            (Some(a), None) => (
+                "SELECT id, account_id, symbol, trade_id, report_id, title, thesis, execution_review, emotion_tags, score, created_at, updated_at
+                 FROM sim_journal_entries WHERE account_id = ?1 ORDER BY created_at DESC LIMIT ?2",
+                vec![Box::new(a.to_string()), Box::new(limit)],
+            ),
+            (None, Some(s)) => (
+                "SELECT id, account_id, symbol, trade_id, report_id, title, thesis, execution_review, emotion_tags, score, created_at, updated_at
+                 FROM sim_journal_entries WHERE symbol = ?1 ORDER BY created_at DESC LIMIT ?2",
+                vec![Box::new(s.to_string()), Box::new(limit)],
+            ),
+            (None, None) => (
+                "SELECT id, account_id, symbol, trade_id, report_id, title, thesis, execution_review, emotion_tags, score, created_at, updated_at
+                 FROM sim_journal_entries ORDER BY created_at DESC LIMIT ?1",
+                vec![Box::new(limit)],
+            ),
+        };
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map(&*param_refs, row_to_sim_journal)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn save_replay_session(&self, session: &crate::models::ReplaySession) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO sim_replay_sessions (id, symbol, interval, replay_date, current_index, speed, running, account_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![
+                session.id,
+                session.symbol,
+                session.interval,
+                session.replay_date,
+                session.current_index,
+                session.speed,
+                if session.running { 1 } else { 0 },
+                session.account_id.as_deref().unwrap_or(""),
+                session.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_replay_session(&self) -> AppResult<Option<crate::models::ReplaySession>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, symbol, interval, replay_date, current_index, speed, running, account_id, updated_at FROM sim_replay_sessions WHERE id='default' LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map([], |row| {
+            Ok(crate::models::ReplaySession {
+                id: row.get(0)?,
+                symbol: row.get(1)?,
+                interval: row.get(2)?,
+                replay_date: row.get(3)?,
+                current_index: row.get(4)?,
+                speed: row.get(5)?,
+                running: row.get::<_, i32>(6)? != 0,
+                account_id: {
+                    let s: String = row.get(7)?;
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s)
+                    }
+                },
+                updated_at: row.get(8)?,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn get_database_summary(&self, path: &str) -> AppResult<DatabaseSummary> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut total_size: i64 = 0;
+        if let Ok(meta) = std::fs::metadata(path) {
+            total_size = meta.len() as i64;
+        }
+        let mut stmt =
+            conn.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")?;
+        let names: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        let mut tables = Vec::new();
+        for name in names {
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {}", name), [], |row| {
+                    row.get(0)
+                })
+                .unwrap_or(0);
+            tables.push(DatabaseTableStats {
+                name,
+                row_count: count,
+                size_bytes: 0,
+                last_updated: None,
+            });
+        }
+        Ok(DatabaseSummary {
+            path: path.to_string(),
+            total_size_bytes: total_size,
+            tables,
+        })
+    }
 }
 
 fn row_to_report(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnalysisReport> {
@@ -966,4 +2029,1523 @@ fn merge_news_rows(rows: Vec<(NewsItemView, NewsClassificationView)>) -> Vec<New
     let mut out: Vec<_> = map.into_values().collect();
     out.sort_by(|a, b| b.display_time.cmp(&a.display_time));
     out
+}
+
+fn row_to_sim_order(row: &rusqlite::Row<'_>) -> rusqlite::Result<SimOrder> {
+    Ok(SimOrder {
+        id: row.get(0)?,
+        account_id: row.get(1)?,
+        symbol: row.get(2)?,
+        name: row.get(3)?,
+        side: row.get(4)?,
+        offset: row.get(5)?,
+        order_type: row.get(6)?,
+        price: row.get(7).ok(),
+        trigger_price: row.get(8).ok(),
+        stop_loss_price: row.get(9).ok(),
+        take_profit_price: row.get(10).ok(),
+        oco_group_id: row.get(11).ok(),
+        parent_order_id: row.get(12).ok(),
+        tif: row.get(13).ok(),
+        condition_operator: row.get(14).ok(),
+        trailing_distance_ticks: row.get(15).ok(),
+        trailing_reference_price: row.get(16).ok(),
+        quantity: row.get(17)?,
+        filled_quantity: row.get(18)?,
+        status: row.get(19)?,
+        reason: row.get(20).ok(),
+        source: row.get(21)?,
+        created_at: row.get(22)?,
+        updated_at: row.get(23)?,
+    })
+}
+
+fn row_to_sim_risk_rule(row: &rusqlite::Row<'_>) -> rusqlite::Result<SimRiskRule> {
+    Ok(SimRiskRule {
+        id: row.get(0)?,
+        account_id: row.get(1)?,
+        scope: row.get(2)?,
+        symbol: row.get(3).ok(),
+        rule_type: row.get(4)?,
+        threshold: row.get(5)?,
+        action: row.get(6)?,
+        enabled: row.get::<_, i64>(7)? != 0,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
+fn row_to_sim_risk_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<SimRiskEvent> {
+    Ok(SimRiskEvent {
+        id: row.get(0)?,
+        account_id: row.get(1)?,
+        rule_id: row.get(2)?,
+        triggered_at: row.get(3)?,
+        description: row.get(4)?,
+        action_taken: row.get(5)?,
+    })
+}
+
+fn row_to_sim_trade(row: &rusqlite::Row<'_>) -> rusqlite::Result<SimTrade> {
+    Ok(SimTrade {
+        id: row.get(0)?,
+        order_id: row.get(1)?,
+        account_id: row.get(2)?,
+        symbol: row.get(3)?,
+        name: row.get(4)?,
+        side: row.get(5)?,
+        offset: row.get(6)?,
+        price: row.get(7)?,
+        quantity: row.get(8)?,
+        commission: row.get(9)?,
+        slippage: row.get(10)?,
+        realized_pnl: row.get(11)?,
+        traded_at: row.get(12)?,
+    })
+}
+
+fn row_to_sim_position(row: &rusqlite::Row<'_>) -> rusqlite::Result<SimPosition> {
+    Ok(SimPosition {
+        account_id: row.get(0)?,
+        symbol: row.get(1)?,
+        name: row.get(2)?,
+        position_side: row.get(3)?,
+        today_qty: row.get(4)?,
+        history_qty: row.get(5)?,
+        total_qty: row.get(6)?,
+        avg_price: row.get(7)?,
+        margin: row.get(8)?,
+        unrealized_pnl: row.get(9)?,
+        updated_at: row.get(10)?,
+    })
+}
+
+fn row_to_sim_journal(row: &rusqlite::Row<'_>) -> rusqlite::Result<SimJournalEntry> {
+    Ok(SimJournalEntry {
+        id: row.get(0)?,
+        account_id: row.get(1)?,
+        symbol: row.get(2).ok(),
+        trade_id: row.get(3).ok(),
+        report_id: row.get(4).ok(),
+        title: row.get(5)?,
+        thesis: row.get(6).ok(),
+        execution_review: row.get(7).ok(),
+        emotion_tags: row.get(8).ok(),
+        score: row.get(9).ok(),
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
+
+impl Database {
+    // =========================================================================
+    // A 股（股票）数据访问方法
+    // =========================================================================
+
+    pub fn save_stock_symbols(&self, symbols: &[StockSymbol]) -> AppResult<usize> {
+        if symbols.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "INSERT OR REPLACE INTO stock_symbols
+             (ts_code, symbol, name, exchange, market, industry, list_date, status, source, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?)"
+        )?;
+        for s in symbols {
+            stmt.execute(params![
+                s.ts_code,
+                s.symbol,
+                s.name,
+                s.exchange,
+                s.market,
+                s.industry,
+                s.list_date,
+                s.status,
+                s.source,
+                s.updated_at,
+            ])?;
+        }
+        Ok(symbols.len())
+    }
+
+    pub fn list_stock_symbols(
+        &self,
+        query: Option<&str>,
+        industry: Option<&str>,
+        limit: i64,
+    ) -> AppResult<Vec<StockSymbol>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut sql = String::from(
+            "SELECT ts_code, symbol, name, exchange, market, industry, list_date, status, source, updated_at
+             FROM stock_symbols WHERE status='active'"
+        );
+        let mut conditions = Vec::new();
+        let mut bind: Vec<String> = Vec::new();
+        if let Some(q) = query {
+            conditions.push("(ts_code LIKE ? OR symbol LIKE ? OR name LIKE ?)");
+            let pattern = format!("%{}%", q);
+            bind.push(pattern.clone());
+            bind.push(pattern.clone());
+            bind.push(pattern);
+        }
+        if let Some(ind) = industry {
+            conditions.push("industry=?");
+            bind.push(ind.to_string());
+        }
+        if !conditions.is_empty() {
+            sql.push_str(" AND ");
+            sql.push_str(&conditions.join(" AND "));
+        }
+        sql.push_str(" ORDER BY ts_code LIMIT ?");
+
+        let mut stmt = conn.prepare(&sql)?;
+        let params_vec: Vec<&dyn rusqlite::ToSql> = bind
+            .iter()
+            .map(|s| s as &dyn rusqlite::ToSql)
+            .chain(std::iter::once(&limit as &dyn rusqlite::ToSql))
+            .collect();
+        let rows = stmt.query_map(params_vec.as_slice(), row_to_stock_symbol)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_stock_symbol(&self, ts_code: &str) -> AppResult<Option<StockSymbol>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT ts_code, symbol, name, exchange, market, industry, list_date, status, source, updated_at
+             FROM stock_symbols WHERE ts_code=? LIMIT 1"
+        )?;
+        let mut rows = stmt.query_map(params![ts_code], row_to_stock_symbol)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn save_stock_daily_bars(&self, bars: &[StockBar]) -> AppResult<usize> {
+        if bars.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "INSERT OR REPLACE INTO stock_daily_bars
+             (ts_code, trade_date, open, high, low, close, pre_close, pct_chg, volume, amount, turnover_rate, adj_factor, adjustment, source, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        )?;
+        for b in bars {
+            stmt.execute(params![
+                b.ts_code,
+                b.trade_date,
+                b.open,
+                b.high,
+                b.low,
+                b.close,
+                b.pre_close,
+                b.pct_chg,
+                b.volume,
+                b.amount,
+                b.turnover_rate,
+                b.adj_factor,
+                b.adjustment,
+                b.source,
+                b.updated_at,
+            ])?;
+        }
+        Ok(bars.len())
+    }
+
+    pub fn get_stock_daily_bars(
+        &self,
+        ts_code: &str,
+        adjustment: &str,
+        limit: i64,
+    ) -> AppResult<Vec<StockBar>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT ts_code, trade_date, open, high, low, close, pre_close, pct_chg, volume, amount, turnover_rate, adj_factor, adjustment, source, updated_at
+             FROM stock_daily_bars
+             WHERE ts_code=? AND adjustment=?
+             ORDER BY trade_date DESC LIMIT ?"
+        )?;
+        let rows = stmt.query_map(params![ts_code, adjustment, limit], row_to_stock_bar)?;
+        let mut out: Vec<StockBar> = rows.filter_map(|r| r.ok()).collect();
+        out.reverse();
+        Ok(out)
+    }
+
+    pub fn save_stock_index_daily_bars(&self, bars: &[StockIndexBar]) -> AppResult<usize> {
+        if bars.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "INSERT OR REPLACE INTO stock_index_daily_bars
+             (index_code, trade_date, open, high, low, close, pct_chg, volume, amount, source, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+        )?;
+        for b in bars {
+            stmt.execute(params![
+                b.index_code,
+                b.trade_date,
+                b.open,
+                b.high,
+                b.low,
+                b.close,
+                b.pct_chg,
+                b.volume,
+                b.amount,
+                b.source,
+                b.updated_at,
+            ])?;
+        }
+        Ok(bars.len())
+    }
+
+    pub fn get_stock_index_daily_bars(
+        &self,
+        index_code: &str,
+        limit: i64,
+    ) -> AppResult<Vec<StockIndexBar>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT index_code, trade_date, open, high, low, close, pct_chg, volume, amount, source, updated_at
+             FROM stock_index_daily_bars
+             WHERE index_code=?
+             ORDER BY trade_date DESC LIMIT ?"
+        )?;
+        let rows = stmt.query_map(params![index_code, limit], row_to_stock_index_bar)?;
+        let mut out: Vec<StockIndexBar> = rows.filter_map(|r| r.ok()).collect();
+        out.reverse();
+        Ok(out)
+    }
+
+    pub fn save_stock_boards(&self, boards: &[StockBoard]) -> AppResult<usize> {
+        if boards.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "INSERT OR REPLACE INTO stock_boards (board_code, board_name, board_type, source, updated_at)
+             VALUES (?,?,?,?,?)"
+        )?;
+        for b in boards {
+            stmt.execute(params![
+                b.board_code,
+                b.board_name,
+                b.board_type,
+                b.source,
+                b.updated_at
+            ])?;
+        }
+        Ok(boards.len())
+    }
+
+    pub fn list_stock_boards(&self, board_type: Option<&str>) -> AppResult<Vec<StockBoard>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let (sql, params_bind): (String, Vec<String>) = if let Some(bt) = board_type {
+            (
+                "SELECT board_code, board_name, board_type, source, updated_at
+                 FROM stock_boards WHERE board_type=? ORDER BY board_name"
+                    .to_string(),
+                vec![bt.to_string()],
+            )
+        } else {
+            (
+                "SELECT board_code, board_name, board_type, source, updated_at
+                 FROM stock_boards ORDER BY board_type, board_name"
+                    .to_string(),
+                vec![],
+            )
+        };
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> = params_bind
+            .iter()
+            .map(|s| s as &dyn rusqlite::ToSql)
+            .collect();
+        let rows = if params.is_empty() {
+            stmt.query_map([], row_to_stock_board)?
+        } else {
+            stmt.query_map(params.as_slice(), row_to_stock_board)?
+        };
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn save_stock_board_members(&self, members: &[StockBoardMember]) -> AppResult<usize> {
+        if members.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "INSERT OR REPLACE INTO stock_board_members (board_code, ts_code, weight, source, updated_at)
+             VALUES (?,?,?,?,?)"
+        )?;
+        for m in members {
+            stmt.execute(params![
+                m.board_code,
+                m.ts_code,
+                m.weight,
+                m.source,
+                m.updated_at
+            ])?;
+        }
+        Ok(members.len())
+    }
+
+    pub fn list_stock_board_members(&self, board_code: &str) -> AppResult<Vec<StockBoardMember>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT board_code, ts_code, weight, source, updated_at
+             FROM stock_board_members WHERE board_code=?",
+        )?;
+        let rows = stmt.query_map(params![board_code], row_to_stock_board_member)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn save_stock_board_snapshots(&self, snapshots: &[StockBoardSnapshot]) -> AppResult<usize> {
+        if snapshots.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "INSERT OR REPLACE INTO stock_board_snapshots
+             (board_code, trade_date, pct_chg, amount, turnover_rate, net_flow, up_count, down_count, source, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?)"
+        )?;
+        for s in snapshots {
+            stmt.execute(params![
+                s.board_code,
+                s.trade_date,
+                s.pct_chg,
+                s.amount,
+                s.turnover_rate,
+                s.net_flow,
+                s.up_count,
+                s.down_count,
+                s.source,
+                s.updated_at,
+            ])?;
+        }
+        Ok(snapshots.len())
+    }
+
+    pub fn get_stock_board_snapshot(
+        &self,
+        board_code: &str,
+        trade_date: Option<&str>,
+    ) -> AppResult<Option<StockBoardSnapshot>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let (sql, params_bind): (String, Vec<String>) = if let Some(d) = trade_date {
+            (
+                "SELECT board_code, trade_date, pct_chg, amount, turnover_rate, net_flow, up_count, down_count, source, updated_at
+                 FROM stock_board_snapshots WHERE board_code=? AND trade_date=? LIMIT 1".to_string(),
+                vec![board_code.to_string(), d.to_string()],
+            )
+        } else {
+            (
+                "SELECT board_code, trade_date, pct_chg, amount, turnover_rate, net_flow, up_count, down_count, source, updated_at
+                 FROM stock_board_snapshots WHERE board_code=?
+                 ORDER BY trade_date DESC LIMIT 1".to_string(),
+                vec![board_code.to_string()],
+            )
+        };
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> = params_bind
+            .iter()
+            .map(|s| s as &dyn rusqlite::ToSql)
+            .collect();
+        let mut rows = stmt.query_map(params.as_slice(), row_to_stock_board_snapshot)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn save_stock_financial_metrics(
+        &self,
+        metrics: &[StockFinancialMetric],
+    ) -> AppResult<usize> {
+        if metrics.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "INSERT OR REPLACE INTO stock_financial_metrics
+             (ts_code, report_period, report_type, revenue, revenue_yoy, net_profit, net_profit_yoy, roe, gross_margin, debt_ratio, operating_cash_flow, eps, source, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        )?;
+        for m in metrics {
+            stmt.execute(params![
+                m.ts_code,
+                m.report_period,
+                m.report_type,
+                m.revenue,
+                m.revenue_yoy,
+                m.net_profit,
+                m.net_profit_yoy,
+                m.roe,
+                m.gross_margin,
+                m.debt_ratio,
+                m.operating_cash_flow,
+                m.eps,
+                m.source,
+                m.updated_at,
+            ])?;
+        }
+        Ok(metrics.len())
+    }
+
+    pub fn get_stock_financial_metrics(
+        &self,
+        ts_code: &str,
+        limit: i64,
+    ) -> AppResult<Vec<StockFinancialMetric>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT ts_code, report_period, report_type, revenue, revenue_yoy, net_profit, net_profit_yoy, roe, gross_margin, debt_ratio, operating_cash_flow, eps, source, updated_at
+             FROM stock_financial_metrics
+             WHERE ts_code=?
+             ORDER BY report_period DESC LIMIT ?"
+        )?;
+        let rows = stmt.query_map(params![ts_code, limit], row_to_stock_financial_metric)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn save_stock_valuation_snapshots(
+        &self,
+        snaps: &[StockValuationSnapshot],
+    ) -> AppResult<usize> {
+        if snaps.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "INSERT OR REPLACE INTO stock_valuation_snapshots
+             (ts_code, trade_date, pe_ttm, pb, ps_ttm, dividend_yield, market_cap, float_market_cap, pe_percentile, pb_percentile, source, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
+        )?;
+        for v in snaps {
+            stmt.execute(params![
+                v.ts_code,
+                v.trade_date,
+                v.pe_ttm,
+                v.pb,
+                v.ps_ttm,
+                v.dividend_yield,
+                v.market_cap,
+                v.float_market_cap,
+                v.pe_percentile,
+                v.pb_percentile,
+                v.source,
+                v.updated_at,
+            ])?;
+        }
+        Ok(snaps.len())
+    }
+
+    pub fn get_stock_valuation_snapshots(
+        &self,
+        ts_code: &str,
+        limit: i64,
+    ) -> AppResult<Vec<StockValuationSnapshot>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT ts_code, trade_date, pe_ttm, pb, ps_ttm, dividend_yield, market_cap, float_market_cap, pe_percentile, pb_percentile, source, updated_at
+             FROM stock_valuation_snapshots
+             WHERE ts_code=?
+             ORDER BY trade_date DESC LIMIT ?"
+        )?;
+        let rows = stmt.query_map(params![ts_code, limit], row_to_stock_valuation_snapshot)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_latest_stock_valuation(
+        &self,
+        ts_code: &str,
+    ) -> AppResult<Option<StockValuationSnapshot>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT ts_code, trade_date, pe_ttm, pb, ps_ttm, dividend_yield, market_cap, float_market_cap, pe_percentile, pb_percentile, source, updated_at
+             FROM stock_valuation_snapshots
+             WHERE ts_code=? ORDER BY trade_date DESC LIMIT 1"
+        )?;
+        let mut rows = stmt.query_map(params![ts_code], row_to_stock_valuation_snapshot)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn save_stock_factor_snapshots(&self, snaps: &[StockFactorSnapshot]) -> AppResult<usize> {
+        if snaps.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "INSERT OR REPLACE INTO stock_factor_snapshots
+             (ts_code, factor_date, momentum, quality, valuation, growth, volatility, liquidity, capital_flow, score, factor_version, source, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        )?;
+        for f in snaps {
+            stmt.execute(params![
+                f.ts_code,
+                f.factor_date,
+                f.momentum,
+                f.quality,
+                f.valuation,
+                f.growth,
+                f.volatility,
+                f.liquidity,
+                f.capital_flow,
+                f.score,
+                f.factor_version,
+                f.source,
+                f.updated_at,
+            ])?;
+        }
+        Ok(snaps.len())
+    }
+
+    pub fn save_stock_screen_template(&self, template: &StockScreenTemplate) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_screen_templates (id, name, criteria_json, created_at, updated_at)
+             VALUES (?,?,?,?,?)",
+            params![
+                template.id,
+                template.name,
+                template.criteria_json,
+                template.created_at,
+                template.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_stock_screen_templates(&self) -> AppResult<Vec<StockScreenTemplate>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, criteria_json, created_at, updated_at
+             FROM stock_screen_templates ORDER BY updated_at DESC",
+        )?;
+        let rows = stmt.query_map([], row_to_stock_screen_template)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn delete_stock_screen_template(&self, id: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute("DELETE FROM stock_screen_templates WHERE id=?", params![id])?;
+        Ok(())
+    }
+
+    pub fn save_stock_screen_result(&self, result: &StockScreenResult) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_screen_results
+             (id, template_id, name, criteria_json, result_json, trade_date, report_period, source_summary, created_at)
+             VALUES (?,?,?,?,?,?,?,?,?)",
+            params![
+                result.id,
+                result.template_id,
+                result.name,
+                result.criteria_json,
+                result.result_json,
+                result.trade_date,
+                result.report_period,
+                result.source_summary,
+                result.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn save_stock_watchlist(&self, watchlist: &StockWatchlist) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let symbols_json = serde_json::to_string(&watchlist.symbols)?;
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_watchlists (id, name, symbols_json, created_at, updated_at)
+             VALUES (?,?,?,?,?)",
+            params![
+                watchlist.id,
+                watchlist.name,
+                symbols_json,
+                watchlist.created_at,
+                watchlist.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_stock_watchlists(&self) -> AppResult<Vec<StockWatchlist>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, symbols_json, created_at, updated_at
+             FROM stock_watchlists ORDER BY updated_at DESC",
+        )?;
+        let rows = stmt.query_map([], row_to_stock_watchlist)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_stock_watchlist(&self, id: &str) -> AppResult<Option<StockWatchlist>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, symbols_json, created_at, updated_at
+             FROM stock_watchlists WHERE id=? LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(params![id], row_to_stock_watchlist)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn delete_stock_watchlist(&self, id: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute("DELETE FROM stock_watchlists WHERE id=?", params![id])?;
+        Ok(())
+    }
+
+    pub fn count_stock_symbols(&self) -> AppResult<i64> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM stock_symbols")?;
+        let count: i64 = stmt.query_row([], |row| row.get(0))?;
+        Ok(count)
+    }
+
+    pub fn get_latest_stock_daily_bar_date(&self) -> AppResult<Option<String>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare("SELECT MAX(trade_date) FROM stock_daily_bars")?;
+        let date: Option<String> = stmt.query_row([], |row| row.get(0))?;
+        Ok(date)
+    }
+
+    // 汇总市场宽度：基于最新一日的 stock_daily_bars
+    pub fn get_stock_market_breadth(&self) -> AppResult<StockMarketBreadth> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let trade_date: Option<String> =
+            conn.query_row("SELECT MAX(trade_date) FROM stock_daily_bars", [], |row| {
+                row.get::<_, Option<String>>(0)
+            })?;
+        let trade_date = match trade_date {
+            Some(d) => d,
+            None => {
+                return Ok(StockMarketBreadth {
+                    trade_date: None,
+                    up_count: 0,
+                    down_count: 0,
+                    flat_count: 0,
+                    limit_up_count: 0,
+                    limit_down_count: 0,
+                    total_amount: None,
+                    prev_amount: None,
+                    amount_change_pct: None,
+                    source: "local".to_string(),
+                    updated_at: dt_to_iso(Utc::now()),
+                });
+            }
+        };
+
+        let mut stmt = conn.prepare(
+            "SELECT
+                COALESCE(SUM(CASE WHEN pct_chg > 0 THEN 1 ELSE 0 END), 0) AS up_count,
+                COALESCE(SUM(CASE WHEN pct_chg < 0 THEN 1 ELSE 0 END), 0) AS down_count,
+                COALESCE(SUM(CASE WHEN pct_chg = 0 OR pct_chg IS NULL THEN 1 ELSE 0 END), 0) AS flat_count,
+                COALESCE(SUM(CASE WHEN pct_chg >= 9.5 THEN 1 ELSE 0 END), 0) AS limit_up,
+                COALESCE(SUM(CASE WHEN pct_chg <= -9.5 THEN 1 ELSE 0 END), 0) AS limit_down,
+                COALESCE(SUM(amount), 0) AS total_amount
+             FROM stock_daily_bars WHERE trade_date=? AND adjustment='none'"
+        )?;
+        let (up, down, flat, limit_up, limit_down, total_amount): (i64, i64, i64, i64, i64, f64) =
+            stmt.query_row(params![trade_date], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })?;
+
+        let prev_date: Option<String> = conn.query_row(
+            "SELECT MAX(trade_date) FROM stock_daily_bars WHERE trade_date < ?",
+            params![trade_date],
+            |row| row.get::<_, Option<String>>(0),
+        )?;
+        let prev_amount: Option<f64> = if let Some(pd) = prev_date {
+            conn.query_row(
+                "SELECT COALESCE(SUM(amount), 0) FROM stock_daily_bars WHERE trade_date=? AND adjustment='none'",
+                params![pd],
+                |row| row.get(0),
+            )
+            .optional()?
+        } else {
+            None
+        };
+        let amount_change_pct = if let Some(prev) = prev_amount {
+            if prev > 0.0 {
+                Some((total_amount - prev) / prev * 100.0)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(StockMarketBreadth {
+            trade_date: Some(trade_date),
+            up_count: up,
+            down_count: down,
+            flat_count: flat,
+            limit_up_count: limit_up,
+            limit_down_count: limit_down,
+            total_amount: Some(total_amount),
+            prev_amount,
+            amount_change_pct,
+            source: "local".to_string(),
+            updated_at: dt_to_iso(Utc::now()),
+        })
+    }
+}
+
+fn row_to_stock_symbol(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockSymbol> {
+    Ok(StockSymbol {
+        ts_code: row.get(0)?,
+        symbol: row.get(1)?,
+        name: row.get(2)?,
+        exchange: row.get(3)?,
+        market: row.get(4)?,
+        industry: row.get(5)?,
+        list_date: row.get(6)?,
+        status: row.get(7)?,
+        source: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
+fn row_to_stock_bar(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockBar> {
+    Ok(StockBar {
+        ts_code: row.get(0)?,
+        trade_date: row.get(1)?,
+        open: row.get(2)?,
+        high: row.get(3)?,
+        low: row.get(4)?,
+        close: row.get(5)?,
+        pre_close: row.get(6)?,
+        pct_chg: row.get(7)?,
+        volume: row.get(8)?,
+        amount: row.get(9)?,
+        turnover_rate: row.get(10)?,
+        adj_factor: row.get(11)?,
+        adjustment: row.get(12)?,
+        source: row.get(13)?,
+        updated_at: row.get(14)?,
+    })
+}
+
+fn row_to_stock_index_bar(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockIndexBar> {
+    Ok(StockIndexBar {
+        index_code: row.get(0)?,
+        trade_date: row.get(1)?,
+        open: row.get(2)?,
+        high: row.get(3)?,
+        low: row.get(4)?,
+        close: row.get(5)?,
+        pct_chg: row.get(6)?,
+        volume: row.get(7)?,
+        amount: row.get(8)?,
+        source: row.get(9)?,
+        updated_at: row.get(10)?,
+    })
+}
+
+fn row_to_stock_board(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockBoard> {
+    Ok(StockBoard {
+        board_code: row.get(0)?,
+        board_name: row.get(1)?,
+        board_type: row.get(2)?,
+        source: row.get(3)?,
+        updated_at: row.get(4)?,
+    })
+}
+
+fn row_to_stock_board_member(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockBoardMember> {
+    Ok(StockBoardMember {
+        board_code: row.get(0)?,
+        ts_code: row.get(1)?,
+        weight: row.get(2)?,
+        source: row.get(3)?,
+        updated_at: row.get(4)?,
+    })
+}
+
+fn row_to_stock_board_snapshot(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockBoardSnapshot> {
+    Ok(StockBoardSnapshot {
+        board_code: row.get(0)?,
+        trade_date: row.get(1)?,
+        pct_chg: row.get(2)?,
+        amount: row.get(3)?,
+        turnover_rate: row.get(4)?,
+        net_flow: row.get(5)?,
+        up_count: row.get(6)?,
+        down_count: row.get(7)?,
+        source: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
+fn row_to_stock_financial_metric(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<StockFinancialMetric> {
+    Ok(StockFinancialMetric {
+        ts_code: row.get(0)?,
+        report_period: row.get(1)?,
+        report_type: row.get(2)?,
+        revenue: row.get(3)?,
+        revenue_yoy: row.get(4)?,
+        net_profit: row.get(5)?,
+        net_profit_yoy: row.get(6)?,
+        roe: row.get(7)?,
+        gross_margin: row.get(8)?,
+        debt_ratio: row.get(9)?,
+        operating_cash_flow: row.get(10)?,
+        eps: row.get(11)?,
+        source: row.get(12)?,
+        updated_at: row.get(13)?,
+    })
+}
+
+fn row_to_stock_valuation_snapshot(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<StockValuationSnapshot> {
+    Ok(StockValuationSnapshot {
+        ts_code: row.get(0)?,
+        trade_date: row.get(1)?,
+        pe_ttm: row.get(2)?,
+        pb: row.get(3)?,
+        ps_ttm: row.get(4)?,
+        dividend_yield: row.get(5)?,
+        market_cap: row.get(6)?,
+        float_market_cap: row.get(7)?,
+        pe_percentile: row.get(8)?,
+        pb_percentile: row.get(9)?,
+        source: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
+
+fn row_to_stock_screen_template(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockScreenTemplate> {
+    Ok(StockScreenTemplate {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        criteria_json: row.get(2)?,
+        created_at: row.get(3)?,
+        updated_at: row.get(4)?,
+    })
+}
+
+fn row_to_stock_watchlist(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockWatchlist> {
+    let symbols_json: String = row.get(2)?;
+    let symbols = serde_json::from_str(&symbols_json).unwrap_or_default();
+    Ok(StockWatchlist {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        symbols,
+        created_at: row.get(3)?,
+        updated_at: row.get(4)?,
+    })
+}
+
+#[cfg(test)]
+mod stock_tests {
+    use super::*;
+    use crate::models::{
+        StockBar, StockBoard, StockBoardMember, StockBoardSnapshot, StockFinancialMetric,
+        StockIndexBar, StockPaperAccount, StockPaperOrder, StockPaperPosition, StockPaperTrade,
+        StockScreenTemplate, StockSymbol, StockValuationSnapshot, StockWatchlist,
+    };
+
+    fn temp_db() -> Database {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.db");
+        let db = Database::open(&path).unwrap();
+        db.init_schema().unwrap();
+        db
+    }
+
+    #[test]
+    fn stock_symbols_roundtrip() {
+        let db = temp_db();
+        let now = dt_to_iso(Utc::now());
+        let symbols = vec![StockSymbol {
+            ts_code: "600000.SH".to_string(),
+            symbol: "600000".to_string(),
+            name: "浦发银行".to_string(),
+            exchange: "SH".to_string(),
+            market: Some("主板".to_string()),
+            industry: Some("银行".to_string()),
+            list_date: Some("1999-11-10".to_string()),
+            status: "active".to_string(),
+            source: "test".to_string(),
+            updated_at: now.clone(),
+        }];
+        assert_eq!(db.save_stock_symbols(&symbols).unwrap(), 1);
+        let fetched = db.list_stock_symbols(None, None, 10).unwrap();
+        assert_eq!(fetched.len(), 1);
+        assert_eq!(fetched[0].ts_code, "600000.SH");
+
+        let by_query = db.list_stock_symbols(Some("浦发"), None, 10).unwrap();
+        assert_eq!(by_query.len(), 1);
+
+        let by_industry = db.list_stock_symbols(None, Some("银行"), 10).unwrap();
+        assert_eq!(by_industry.len(), 1);
+    }
+
+    #[test]
+    fn stock_daily_bars_roundtrip() {
+        let db = temp_db();
+        let now = dt_to_iso(Utc::now());
+        let bars = vec![
+            StockBar {
+                ts_code: "600000.SH".to_string(),
+                trade_date: "20260101".to_string(),
+                open: Some(10.0),
+                high: Some(10.5),
+                low: Some(9.8),
+                close: Some(10.2),
+                pre_close: Some(10.0),
+                pct_chg: Some(2.0),
+                volume: Some(10000.0),
+                amount: Some(102000.0),
+                turnover_rate: Some(0.01),
+                adj_factor: None,
+                adjustment: "none".to_string(),
+                source: "test".to_string(),
+                updated_at: now.clone(),
+            },
+            StockBar {
+                ts_code: "600000.SH".to_string(),
+                trade_date: "20260102".to_string(),
+                open: Some(10.2),
+                high: Some(10.3),
+                low: Some(10.0),
+                close: Some(10.1),
+                pre_close: Some(10.2),
+                pct_chg: Some(-0.98),
+                volume: Some(8000.0),
+                amount: Some(80800.0),
+                turnover_rate: Some(0.008),
+                adj_factor: None,
+                adjustment: "none".to_string(),
+                source: "test".to_string(),
+                updated_at: now.clone(),
+            },
+        ];
+        assert_eq!(db.save_stock_daily_bars(&bars).unwrap(), 2);
+        let fetched = db.get_stock_daily_bars("600000.SH", "none", 10).unwrap();
+        assert_eq!(fetched.len(), 2);
+        assert_eq!(fetched[0].trade_date, "20260101");
+        assert_eq!(fetched[1].trade_date, "20260102");
+    }
+
+    #[test]
+    fn stock_index_bars_roundtrip() {
+        let db = temp_db();
+        let now = dt_to_iso(Utc::now());
+        let bars = vec![StockIndexBar {
+            index_code: "000001.SH".to_string(),
+            trade_date: "20260102".to_string(),
+            open: Some(3000.0),
+            high: Some(3010.0),
+            low: Some(2990.0),
+            close: Some(3005.0),
+            pct_chg: Some(0.17),
+            volume: Some(1000000.0),
+            amount: Some(1e12),
+            source: "test".to_string(),
+            updated_at: now.clone(),
+        }];
+        assert_eq!(db.save_stock_index_daily_bars(&bars).unwrap(), 1);
+        let fetched = db.get_stock_index_daily_bars("000001.SH", 10).unwrap();
+        assert_eq!(fetched.len(), 1);
+        assert_eq!(fetched[0].close, Some(3005.0));
+    }
+
+    #[test]
+    fn stock_boards_and_members_roundtrip() {
+        let db = temp_db();
+        let now = dt_to_iso(Utc::now());
+        let boards = vec![StockBoard {
+            board_code: "BK0475".to_string(),
+            board_name: "银行".to_string(),
+            board_type: "industry".to_string(),
+            source: "test".to_string(),
+            updated_at: now.clone(),
+        }];
+        assert_eq!(db.save_stock_boards(&boards).unwrap(), 1);
+        let members = vec![StockBoardMember {
+            board_code: "BK0475".to_string(),
+            ts_code: "600000.SH".to_string(),
+            weight: Some(0.15),
+            source: "test".to_string(),
+            updated_at: now.clone(),
+        }];
+        assert_eq!(db.save_stock_board_members(&members).unwrap(), 1);
+
+        let fetched_boards = db.list_stock_boards(Some("industry")).unwrap();
+        assert_eq!(fetched_boards.len(), 1);
+
+        let fetched_members = db.list_stock_board_members("BK0475").unwrap();
+        assert_eq!(fetched_members.len(), 1);
+        assert_eq!(fetched_members[0].ts_code, "600000.SH");
+    }
+
+    #[test]
+    fn stock_board_snapshot_roundtrip() {
+        let db = temp_db();
+        let now = dt_to_iso(Utc::now());
+        let snaps = vec![StockBoardSnapshot {
+            board_code: "BK0475".to_string(),
+            trade_date: "20260102".to_string(),
+            pct_chg: Some(1.2),
+            amount: Some(1e10),
+            turnover_rate: Some(0.8),
+            net_flow: Some(1e9),
+            up_count: Some(35),
+            down_count: Some(2),
+            source: "test".to_string(),
+            updated_at: now.clone(),
+        }];
+        assert_eq!(db.save_stock_board_snapshots(&snaps).unwrap(), 1);
+        let fetched = db.get_stock_board_snapshot("BK0475", None).unwrap();
+        assert!(fetched.is_some());
+        assert_eq!(fetched.unwrap().up_count, Some(35));
+    }
+
+    #[test]
+    fn stock_market_breadth_aggregation() {
+        let db = temp_db();
+        let now = dt_to_iso(Utc::now());
+        let bars = vec![
+            StockBar {
+                ts_code: "600000.SH".to_string(),
+                trade_date: "20260102".to_string(),
+                open: Some(10.0),
+                high: Some(10.5),
+                low: Some(9.8),
+                close: Some(10.2),
+                pre_close: Some(10.0),
+                pct_chg: Some(2.0),
+                volume: Some(10000.0),
+                amount: Some(100000.0),
+                turnover_rate: Some(0.01),
+                adj_factor: None,
+                adjustment: "none".to_string(),
+                source: "test".to_string(),
+                updated_at: now.clone(),
+            },
+            StockBar {
+                ts_code: "000001.SZ".to_string(),
+                trade_date: "20260102".to_string(),
+                open: Some(10.0),
+                high: Some(10.1),
+                low: Some(9.9),
+                close: Some(9.95),
+                pre_close: Some(10.0),
+                pct_chg: Some(-0.5),
+                volume: Some(5000.0),
+                amount: Some(50000.0),
+                turnover_rate: Some(0.005),
+                adj_factor: None,
+                adjustment: "none".to_string(),
+                source: "test".to_string(),
+                updated_at: now.clone(),
+            },
+        ];
+        db.save_stock_daily_bars(&bars).unwrap();
+        let breadth = db.get_stock_market_breadth().unwrap();
+        assert_eq!(breadth.up_count, 1);
+        assert_eq!(breadth.down_count, 1);
+        assert_eq!(breadth.flat_count, 0);
+        assert_eq!(breadth.total_amount, Some(150000.0));
+    }
+
+    #[test]
+    fn stock_financial_and_valuation_roundtrip() {
+        let db = temp_db();
+        let now = dt_to_iso(Utc::now());
+        let metrics = vec![StockFinancialMetric {
+            ts_code: "600000.SH".to_string(),
+            report_period: "2025-12-31".to_string(),
+            report_type: Some("年报".to_string()),
+            revenue: Some(1e11),
+            revenue_yoy: Some(-3.5),
+            net_profit: Some(4e10),
+            net_profit_yoy: Some(1.2),
+            roe: Some(7.8),
+            gross_margin: None,
+            debt_ratio: Some(92.1),
+            operating_cash_flow: None,
+            eps: Some(1.43),
+            source: "test".to_string(),
+            updated_at: now.clone(),
+        }];
+        assert_eq!(db.save_stock_financial_metrics(&metrics).unwrap(), 1);
+        let fetched = db.get_stock_financial_metrics("600000.SH", 10).unwrap();
+        assert_eq!(fetched.len(), 1);
+        assert_eq!(fetched[0].report_period, "2025-12-31");
+
+        let vals = vec![StockValuationSnapshot {
+            ts_code: "600000.SH".to_string(),
+            trade_date: "20260102".to_string(),
+            pe_ttm: Some(4.5),
+            pb: Some(0.42),
+            ps_ttm: Some(1.8),
+            dividend_yield: Some(5.2),
+            market_cap: Some(2.85e11),
+            float_market_cap: Some(2.85e11),
+            pe_percentile: Some(12.5),
+            pb_percentile: Some(8.3),
+            source: "test".to_string(),
+            updated_at: now.clone(),
+        }];
+        assert_eq!(db.save_stock_valuation_snapshots(&vals).unwrap(), 1);
+        let latest = db.get_latest_stock_valuation("600000.SH").unwrap();
+        assert!(latest.is_some());
+        assert_eq!(latest.unwrap().pe_ttm, Some(4.5));
+    }
+
+    #[test]
+    fn stock_screen_template_delete() {
+        let db = temp_db();
+        let now = dt_to_iso(Utc::now());
+        let template = StockScreenTemplate {
+            id: "tpl-1".to_string(),
+            name: "低估值".to_string(),
+            criteria_json: "{}".to_string(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        };
+        db.save_stock_screen_template(&template).unwrap();
+        assert_eq!(db.list_stock_screen_templates().unwrap().len(), 1);
+        db.delete_stock_screen_template("tpl-1").unwrap();
+        assert!(db.list_stock_screen_templates().unwrap().is_empty());
+    }
+
+    #[test]
+    fn stock_watchlist_crud() {
+        let db = temp_db();
+        let now = dt_to_iso(Utc::now());
+        let watchlist = StockWatchlist {
+            id: "wl-1".to_string(),
+            name: "测试池".to_string(),
+            symbols: vec!["600000.SH".to_string()],
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        };
+        db.save_stock_watchlist(&watchlist).unwrap();
+        let fetched = db.list_stock_watchlists().unwrap();
+        assert_eq!(fetched.len(), 1);
+        assert_eq!(fetched[0].symbols, vec!["600000.SH"]);
+        db.delete_stock_watchlist("wl-1").unwrap();
+        assert!(db.list_stock_watchlists().unwrap().is_empty());
+    }
+
+    #[test]
+    fn stock_paper_portfolio_roundtrip() {
+        let db = temp_db();
+        let now = dt_to_iso(Utc::now());
+        let account = StockPaperAccount {
+            id: "acc-1".to_string(),
+            name: "测试组合".to_string(),
+            initial_balance: 1_000_000.0,
+            cash_balance: 900_000.0,
+            market_value: 100_000.0,
+            total_equity: 1_000_000.0,
+            total_cost: 99_000.0,
+            realized_pnl: 0.0,
+            unrealized_pnl: 1_000.0,
+            status: "active".to_string(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        };
+        db.save_stock_paper_account(&account).unwrap();
+        let fetched = db.get_stock_paper_account("acc-1").unwrap();
+        assert!(fetched.is_some());
+        assert_eq!(fetched.unwrap().name, "测试组合");
+
+        let order = StockPaperOrder {
+            id: "order-1".to_string(),
+            account_id: "acc-1".to_string(),
+            ts_code: "600000.SH".to_string(),
+            name: "浦发银行".to_string(),
+            side: "buy".to_string(),
+            order_type: "limit".to_string(),
+            price: Some(10.0),
+            quantity: 100,
+            filled_quantity: 100,
+            status: "filled".to_string(),
+            reason: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        };
+        db.save_stock_paper_order(&order).unwrap();
+        let orders = db.list_stock_paper_orders("acc-1").unwrap();
+        assert_eq!(orders.len(), 1);
+
+        let position = StockPaperPosition {
+            account_id: "acc-1".to_string(),
+            ts_code: "600000.SH".to_string(),
+            name: "浦发银行".to_string(),
+            quantity: 100,
+            available_quantity: 100,
+            avg_cost: 10.0,
+            total_cost: 1000.0,
+            market_value: 1020.0,
+            unrealized_pnl: 20.0,
+            updated_at: now.clone(),
+        };
+        db.save_stock_paper_position(&position).unwrap();
+        let positions = db.list_stock_paper_positions("acc-1").unwrap();
+        assert_eq!(positions.len(), 1);
+        let pos = db.get_stock_paper_position("acc-1", "600000.SH").unwrap();
+        assert!(pos.is_some());
+
+        let trade = StockPaperTrade {
+            id: "trade-1".to_string(),
+            order_id: "order-1".to_string(),
+            account_id: "acc-1".to_string(),
+            ts_code: "600000.SH".to_string(),
+            name: "浦发银行".to_string(),
+            side: "buy".to_string(),
+            price: 10.0,
+            quantity: 100,
+            commission: 5.0,
+            traded_at: now.clone(),
+        };
+        db.save_stock_paper_trade(&trade).unwrap();
+        let trades = db.list_stock_paper_trades("acc-1").unwrap();
+        assert_eq!(trades.len(), 1);
+
+        let accounts = db.list_stock_paper_accounts().unwrap();
+        assert_eq!(accounts.len(), 1);
+    }
+}
+
+impl Database {
+    // =========================================================================
+    // A 股模拟组合数据访问方法
+    // =========================================================================
+
+    pub fn save_stock_paper_account(&self, account: &StockPaperAccount) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_paper_accounts
+             (id, name, initial_balance, cash_balance, market_value, total_equity, total_cost, realized_pnl, unrealized_pnl, status, created_at, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            params![
+                account.id,
+                account.name,
+                account.initial_balance,
+                account.cash_balance,
+                account.market_value,
+                account.total_equity,
+                account.total_cost,
+                account.realized_pnl,
+                account.unrealized_pnl,
+                account.status,
+                account.created_at,
+                account.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_stock_paper_accounts(&self) -> AppResult<Vec<StockPaperAccount>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, initial_balance, cash_balance, market_value, total_equity, total_cost, realized_pnl, unrealized_pnl, status, created_at, updated_at
+             FROM stock_paper_accounts ORDER BY updated_at DESC"
+        )?;
+        let rows = stmt.query_map([], row_to_stock_paper_account)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_stock_paper_account(&self, id: &str) -> AppResult<Option<StockPaperAccount>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, initial_balance, cash_balance, market_value, total_equity, total_cost, realized_pnl, unrealized_pnl, status, created_at, updated_at
+             FROM stock_paper_accounts WHERE id=? LIMIT 1"
+        )?;
+        let mut rows = stmt.query_map(params![id], row_to_stock_paper_account)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn save_stock_paper_order(&self, order: &StockPaperOrder) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_paper_orders
+             (id, account_id, ts_code, name, side, order_type, price, quantity, filled_quantity, status, reason, created_at, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            params![
+                order.id,
+                order.account_id,
+                order.ts_code,
+                order.name,
+                order.side,
+                order.order_type,
+                order.price,
+                order.quantity,
+                order.filled_quantity,
+                order.status,
+                order.reason,
+                order.created_at,
+                order.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_stock_paper_orders(&self, account_id: &str) -> AppResult<Vec<StockPaperOrder>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, account_id, ts_code, name, side, order_type, price, quantity, filled_quantity, status, reason, created_at, updated_at
+             FROM stock_paper_orders WHERE account_id=? ORDER BY created_at DESC"
+        )?;
+        let rows = stmt.query_map(params![account_id], row_to_stock_paper_order)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn save_stock_paper_position(&self, position: &StockPaperPosition) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_paper_positions
+             (account_id, ts_code, name, quantity, available_quantity, avg_cost, total_cost, market_value, unrealized_pnl, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?)",
+            params![
+                position.account_id,
+                position.ts_code,
+                position.name,
+                position.quantity,
+                position.available_quantity,
+                position.avg_cost,
+                position.total_cost,
+                position.market_value,
+                position.unrealized_pnl,
+                position.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_stock_paper_positions(
+        &self,
+        account_id: &str,
+    ) -> AppResult<Vec<StockPaperPosition>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT account_id, ts_code, name, quantity, available_quantity, avg_cost, total_cost, market_value, unrealized_pnl, updated_at
+             FROM stock_paper_positions WHERE account_id=? ORDER BY ts_code"
+        )?;
+        let rows = stmt.query_map(params![account_id], row_to_stock_paper_position)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_stock_paper_position(
+        &self,
+        account_id: &str,
+        ts_code: &str,
+    ) -> AppResult<Option<StockPaperPosition>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT account_id, ts_code, name, quantity, available_quantity, avg_cost, total_cost, market_value, unrealized_pnl, updated_at
+             FROM stock_paper_positions WHERE account_id=? AND ts_code=? LIMIT 1"
+        )?;
+        let mut rows = stmt.query_map(params![account_id, ts_code], row_to_stock_paper_position)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn save_stock_paper_trade(&self, trade: &StockPaperTrade) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_paper_trades
+             (id, order_id, account_id, ts_code, name, side, price, quantity, commission, traded_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?)",
+            params![
+                trade.id,
+                trade.order_id,
+                trade.account_id,
+                trade.ts_code,
+                trade.name,
+                trade.side,
+                trade.price,
+                trade.quantity,
+                trade.commission,
+                trade.traded_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_stock_paper_trades(&self, account_id: &str) -> AppResult<Vec<StockPaperTrade>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, order_id, account_id, ts_code, name, side, price, quantity, commission, traded_at
+             FROM stock_paper_trades WHERE account_id=? ORDER BY traded_at DESC"
+        )?;
+        let rows = stmt.query_map(params![account_id], row_to_stock_paper_trade)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+}
+
+fn row_to_stock_paper_account(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockPaperAccount> {
+    Ok(StockPaperAccount {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        initial_balance: row.get(2)?,
+        cash_balance: row.get(3)?,
+        market_value: row.get(4)?,
+        total_equity: row.get(5)?,
+        total_cost: row.get(6)?,
+        realized_pnl: row.get(7)?,
+        unrealized_pnl: row.get(8)?,
+        status: row.get(9)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
+
+fn row_to_stock_paper_order(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockPaperOrder> {
+    Ok(StockPaperOrder {
+        id: row.get(0)?,
+        account_id: row.get(1)?,
+        ts_code: row.get(2)?,
+        name: row.get(3)?,
+        side: row.get(4)?,
+        order_type: row.get(5)?,
+        price: row.get(6)?,
+        quantity: row.get(7)?,
+        filled_quantity: row.get(8)?,
+        status: row.get(9)?,
+        reason: row.get(10)?,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
+    })
+}
+
+fn row_to_stock_paper_position(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockPaperPosition> {
+    Ok(StockPaperPosition {
+        account_id: row.get(0)?,
+        ts_code: row.get(1)?,
+        name: row.get(2)?,
+        quantity: row.get(3)?,
+        available_quantity: row.get(4)?,
+        avg_cost: row.get(5)?,
+        total_cost: row.get(6)?,
+        market_value: row.get(7)?,
+        unrealized_pnl: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
+fn row_to_stock_paper_trade(row: &rusqlite::Row<'_>) -> rusqlite::Result<StockPaperTrade> {
+    Ok(StockPaperTrade {
+        id: row.get(0)?,
+        order_id: row.get(1)?,
+        account_id: row.get(2)?,
+        ts_code: row.get(3)?,
+        name: row.get(4)?,
+        side: row.get(5)?,
+        price: row.get(6)?,
+        quantity: row.get(7)?,
+        commission: row.get(8)?,
+        traded_at: row.get(9)?,
+    })
 }

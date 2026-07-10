@@ -30,6 +30,10 @@ export function useRealtimeQuotes(symbols: string[]) {
         next.set(sym, {
           symbol: sym,
           last_price: msg.last_price,
+          bid_price: msg.bid_price,
+          ask_price: msg.ask_price,
+          bid_volume: msg.bid_volume,
+          ask_volume: msg.ask_volume,
           prev_close: msg.prev_close,
           change_pct: msg.change_pct,
           timestamp: msg.timestamp,

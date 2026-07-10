@@ -5,6 +5,7 @@ import {
   Database,
   HardDrive,
   Palette,
+  Scale,
   SlidersHorizontal,
   Wrench,
 } from "lucide-react";
@@ -15,6 +16,7 @@ export type SettingsSectionId =
   | "preferences"
   | "data"
   | "llm"
+  | "simulation"
   | "storage"
   | "debug";
 
@@ -30,6 +32,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: "preferences", label: "运营配置", icon: SlidersHorizontal },
   { id: "data", label: "数据源", icon: Database },
   { id: "llm", label: "大模型", icon: Bot },
+  { id: "simulation", label: "模拟规则", icon: Scale },
   { id: "storage", label: "存储与导出", icon: HardDrive },
   { id: "debug", label: "调试", icon: Wrench },
 ];

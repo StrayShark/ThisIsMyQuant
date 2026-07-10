@@ -3,12 +3,22 @@ import { useEffect } from "react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import {
   BarChart3,
+  BellRing,
+  CalendarClock,
+  Database,
   FileText,
   Layers,
+  Newspaper,
   Settings,
   Activity,
   LayoutDashboard,
   ArrowLeft,
+  Sparkles,
+  TrendingUp,
+  History,
+  PlayCircle,
+  HardDrive,
+  PieChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ToastBanner } from "@/components/ToastBanner";
@@ -25,8 +35,18 @@ import {
 const mainNavItems = [
   { to: "/", label: "总览", icon: LayoutDashboard, end: true },
   { to: "/workspace", label: "行情", icon: BarChart3, end: true },
+  { to: "/stocks", label: "A股", icon: PieChart, end: true },
+  { to: "/simulation", label: "模拟盘", icon: TrendingUp, end: true },
+  { to: "/review", label: "复盘", icon: History, end: true },
+  { to: "/replay", label: "回放", icon: PlayCircle, end: true },
+  { to: "/factors", label: "因子", icon: Database, end: true },
+  { to: "/news", label: "资讯", icon: Newspaper, end: true },
+  { to: "/calendar", label: "日历", icon: CalendarClock, end: true },
+  { to: "/anomalies", label: "异动", icon: BellRing, end: true },
+  { to: "/copilot", label: "助手", icon: Sparkles, end: true },
   { to: "/reports", label: "报告", icon: FileText, end: false },
   { to: "/symbols", label: "品种", icon: Layers, end: false },
+  { to: "/database", label: "数据库", icon: HardDrive, end: true },
   { to: "/status", label: "状态", icon: Activity, end: false },
 ];
 

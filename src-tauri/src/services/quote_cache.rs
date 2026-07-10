@@ -38,10 +38,43 @@ impl QuoteCache {
         self.prev_close.get(&symbol.to_lowercase()).copied()
     }
 
+    pub fn last_price(&self, symbol: &str) -> Option<f64> {
+        self.get(symbol).map(|q| q.last_price)
+    }
+
     pub fn set_prev_close(&mut self, symbol: &str, close: f64) {
         if close > 0.0 {
             self.prev_close.insert(symbol.to_lowercase(), close);
         }
+    }
+
+    pub fn update_price(&mut self, symbol: &str, last_price: f64, timestamp: &str) {
+        let sym = symbol.to_lowercase();
+        let prev_close = self.prev_close.get(&sym).copied().unwrap_or(0.0);
+        let change_pct = if prev_close > 0.0 {
+            (last_price - prev_close) / prev_close * 100.0
+        } else {
+            0.0
+        };
+        self.quotes.insert(
+            sym.clone(),
+            RealtimeQuote {
+                symbol: sym,
+                last_price,
+                bid_price: last_price,
+                ask_price: last_price,
+                bid_volume: 0,
+                ask_volume: 0,
+                prev_close,
+                change_pct,
+                timestamp: timestamp.into(),
+                forming_daily: None,
+            },
+        );
+    }
+
+    pub fn insert_quote(&mut self, quote: RealtimeQuote) {
+        self.quotes.insert(quote.symbol.to_lowercase(), quote);
     }
 
     pub fn update_from_tick(&mut self, tick: &Tick, prev_close: f64, forming_daily: Option<KLine>) {
@@ -59,6 +92,10 @@ impl QuoteCache {
             RealtimeQuote {
                 symbol: sym,
                 last_price: tick.last_price,
+                bid_price: tick.bid_price,
+                ask_price: tick.ask_price,
+                bid_volume: tick.bid_volume,
+                ask_volume: tick.ask_volume,
                 prev_close,
                 change_pct,
                 timestamp: tick.timestamp.clone(),

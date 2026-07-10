@@ -12,6 +12,24 @@ import type {
   CalendarEvent,
   NewsItemView,
   NewsRecord,
+  StockSymbol,
+  AStockDashboardView,
+  StockBar,
+  StockDetailView,
+  StockBoardView,
+  StockBoardDetailView,
+  StockScreenerResultView,
+  StockScreenTemplate,
+  StockDataSyncStatus,
+  StockFinancialMetric,
+  StockWatchlist,
+  StockPaperAccount,
+  StockPaperPortfolioView,
+  StockPaperOrder,
+  StockPaperOrderEstimate,
+  CreateStockPaperAccountRequest,
+  PlaceStockPaperOrderRequest,
+  CancelStockPaperOrderRequest,
 } from "@/types";
 import { e2eMockApi } from "@/api/e2e-mock";
 import { normalizeAppearance } from "@/lib/appearance";
@@ -350,6 +368,311 @@ const liveApi = {
 
     return stream.getReader();
   },
+
+  listSimAccounts: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").SimAccount[]>>("list_sim_accounts")),
+
+  createSimAccount: async (payload: { name: string; initial_balance: number }) =>
+    unwrap(await invoke<ApiResponse<import("@/types").SimAccount>>("create_sim_account", payload)),
+
+  resetSimAccount: async (accountId: string) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").SimAccount>>("reset_sim_account", {
+        account_id: accountId,
+      })
+    ),
+
+  getSimAccountSnapshot: async (accountId?: string) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").SimAccountSnapshot>>("get_sim_account_snapshot", {
+        account_id: accountId ?? null,
+      })
+    ),
+
+  listSimPositions: async (accountId?: string) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").SimPosition[]>>("list_sim_positions", {
+        account_id: accountId ?? null,
+      })
+    ),
+
+  listSimOrders: async (params?: { account_id?: string; status?: string; limit?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").SimOrder[]>>("list_sim_orders", {
+        account_id: params?.account_id ?? null,
+        status: params?.status ?? null,
+        limit: params?.limit ?? null,
+      })
+    ),
+
+  listSimTrades: async (params?: { account_id?: string; symbol?: string; limit?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").SimTrade[]>>("list_sim_trades", {
+        account_id: params?.account_id ?? null,
+        symbol: params?.symbol ?? null,
+        limit: params?.limit ?? null,
+      })
+    ),
+
+  listSimEquityCurve: async (params?: { account_id?: string; days?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").SimEquitySnapshot[]>>("list_sim_equity_curve", {
+        account_id: params?.account_id ?? null,
+        days: params?.days ?? null,
+      })
+    ),
+
+  getSimPerformance: async (params?: { account_id?: string }) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").SimPerformance>>("get_sim_performance", {
+        account_id: params?.account_id ?? null,
+      })
+    ),
+
+  placeSimOrder: async (payload: import("@/types").PlaceSimOrderRequest) =>
+    unwrap(await invoke<ApiResponse<import("@/types").SimOrder>>("place_sim_order", payload as unknown as Record<string, unknown>)),
+
+  cancelSimOrder: async (orderId: string) =>
+    unwrap(await invoke<ApiResponse<import("@/types").SimOrder>>("cancel_sim_order", { order_id: orderId })),
+
+  estimateSimOrder: async (payload: Omit<import("@/types").PlaceSimOrderRequest, "account_id"> & { account_id?: string }) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").SimOrderEstimate>>("estimate_sim_order", {
+        ...payload,
+        account_id: payload.account_id ?? null,
+      })
+    ),
+
+  listSimContractRules: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").SimContractRule[]>>("list_sim_contract_rules")),
+
+  saveSimContractRule: async (payload: import("@/types").SimContractRule) =>
+    unwrap(await invoke<ApiResponse<import("@/types").SimContractRule>>("save_sim_contract_rule", payload as unknown as Record<string, unknown>)),
+
+  deleteSimContractRule: async (symbol: string) =>
+    unwrap(await invoke<ApiResponse<string>>("delete_sim_contract_rule", { symbol })),
+
+  listSimRiskRules: async (params?: { account_id?: string }) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").SimRiskRule[]>>("list_sim_risk_rules", {
+        account_id: params?.account_id ?? null,
+      })
+    ),
+
+  saveSimRiskRule: async (payload: import("@/types").SimRiskRule) =>
+    unwrap(await invoke<ApiResponse<import("@/types").SimRiskRule>>("save_sim_risk_rule", payload as unknown as Record<string, unknown>)),
+
+  deleteSimRiskRule: async (id: string) =>
+    unwrap(await invoke<ApiResponse<string>>("delete_sim_risk_rule", { id })),
+
+  forceLiquidate: async (payload: { account_id: string; symbol?: string | null }) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").SimOrder[]>>("force_liquidate", {
+        account_id: payload.account_id,
+        symbol: payload.symbol ?? null,
+      })
+    ),
+
+  saveSimJournalEntry: async (payload: Partial<import("@/types").SimJournalEntry>) =>
+    unwrap(await invoke<ApiResponse<import("@/types").SimJournalEntry>>("save_sim_journal_entry", payload)),
+
+  listSimJournalEntries: async (params?: { account_id?: string; symbol?: string; limit?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").SimJournalEntry[]>>("list_sim_journal_entries", {
+        account_id: params?.account_id ?? null,
+        symbol: params?.symbol ?? null,
+        limit: params?.limit ?? null,
+      })
+    ),
+
+  startMarketReplay: async (payload: { symbol: string; date: string; account_id?: string; speed?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").ReplayState>>("start_market_replay", {
+        ...payload,
+        account_id: payload.account_id ?? null,
+        speed: payload.speed ?? 1,
+      })
+    ),
+
+  stopMarketReplay: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").ReplayState>>("stop_market_replay")),
+
+  stepMarketReplay: async (steps?: number) =>
+    unwrap(await invoke<ApiResponse<import("@/types").ReplayState>>("step_market_replay", { steps: steps ?? 1 })),
+
+  getReplayState: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").ReplayState>>("get_replay_state")),
+
+  getReplayKlines: async () =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").ReplayKlinePayload>>("get_replay_klines")
+    ),
+
+  getDatabaseSummary: async () =>
+    unwrap(await invoke<ApiResponse<import("@/types").DatabaseSummary>>("get_database_summary")),
+
+  backupDatabase: async () =>
+    unwrap(await invoke<ApiResponse<string>>("backup_database")),
+
+  // A 股
+  listStockSymbols: async (params?: { query?: string; industry?: string; limit?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<StockSymbol[]>>("list_stock_symbols", {
+        query: params?.query ?? null,
+        industry: params?.industry ?? null,
+        limit: params?.limit ?? null,
+      })
+    ),
+
+  getAStockDashboard: async () =>
+    unwrap(await invoke<ApiResponse<AStockDashboardView>>("get_a_stock_dashboard")),
+
+  getStockKlines: async (params: { ts_code: string; adjustment?: string; limit?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<StockBar[]>>("get_stock_klines", {
+        ts_code: params.ts_code,
+        adjustment: params.adjustment ?? null,
+        limit: params.limit ?? null,
+      })
+    ),
+
+  getStockDetail: async (ts_code: string) =>
+    unwrap(await invoke<ApiResponse<StockDetailView>>("get_stock_detail", { ts_code })),
+
+  listStockIndustries: async (boardType?: string) =>
+    unwrap(
+      await invoke<ApiResponse<StockBoardView[]>>("list_stock_industries", {
+        board_type: boardType ?? null,
+      })
+    ),
+
+  getStockIndustryDetail: async (params: { board_code: string; trade_date?: string }) =>
+    unwrap(
+      await invoke<ApiResponse<StockBoardDetailView>>("get_stock_industry_detail", {
+        board_code: params.board_code,
+        trade_date: params.trade_date ?? null,
+      })
+    ),
+
+  runStockScreener: async (params: { criteria_json: string; name?: string }) =>
+    unwrap(
+      await invoke<ApiResponse<StockScreenerResultView>>("run_stock_screener", {
+        criteria_json: params.criteria_json,
+        name: params.name ?? null,
+      })
+    ),
+
+  saveStockScreen: async (params: { criteria_json: string; name?: string }) =>
+    unwrap(
+      await invoke<ApiResponse<StockScreenTemplate>>("save_stock_screen", {
+        criteria_json: params.criteria_json,
+        name: params.name ?? null,
+      })
+    ),
+
+  listStockScreenTemplates: async () =>
+    unwrap(await invoke<ApiResponse<StockScreenTemplate[]>>("list_stock_screen_templates")),
+
+  deleteStockScreenTemplate: async (id: string) =>
+    unwrap(await invoke<ApiResponse<null>>("delete_stock_screen_template", { id })),
+
+  summarizeStockScreen: async (params: { criteria_json: string; result_summary: string }) =>
+    unwrap(
+      await invoke<ApiResponse<AnalysisReport>>("summarize_stock_screen", {
+        criteria_json: params.criteria_json,
+        result_summary: params.result_summary,
+      })
+    ),
+
+  listStockFinancials: async (ts_code: string) =>
+    unwrap(await invoke<ApiResponse<StockFinancialMetric[]>>("list_stock_financials", { ts_code })),
+
+  listStockWatchlists: async () =>
+    unwrap(await invoke<ApiResponse<StockWatchlist[]>>("list_stock_watchlists")),
+
+  saveStockWatchlist: async (payload: { id?: string; name: string; symbols: string[] }) =>
+    unwrap(
+      await invoke<ApiResponse<StockWatchlist>>("save_stock_watchlist", {
+        id: payload.id ?? null,
+        name: payload.name,
+        symbols: payload.symbols,
+      })
+    ),
+
+  deleteStockWatchlist: async (id: string) =>
+    unwrap(await invoke<ApiResponse<null>>("delete_stock_watchlist", { id })),
+
+  triggerStockDataSync: async (params: { scope: string; symbols?: string[] }) =>
+    unwrap(
+      await invoke<ApiResponse<StockDataSyncStatus>>("trigger_stock_data_sync", {
+        scope: params.scope,
+        symbols: params.symbols ?? null,
+      })
+    ),
+
+  // A 股模拟组合
+  listStockPaperAccounts: async () =>
+    unwrap(await invoke<ApiResponse<StockPaperAccount[]>>("list_stock_paper_accounts")),
+
+  createStockPaperAccount: async (payload: CreateStockPaperAccountRequest) =>
+    unwrap(
+      await invoke<ApiResponse<StockPaperAccount>>("create_stock_paper_account", {
+        name: payload.name,
+        initial_balance: payload.initial_balance,
+      })
+    ),
+
+  getStockPaperPortfolio: async (account_id: string) =>
+    unwrap(
+      await invoke<ApiResponse<StockPaperPortfolioView>>("get_stock_paper_portfolio", {
+        account_id,
+      })
+    ),
+
+  placeStockPaperOrder: async (payload: PlaceStockPaperOrderRequest) =>
+    unwrap(
+      await invoke<ApiResponse<StockPaperOrder>>("place_stock_paper_order", {
+        account_id: payload.account_id,
+        ts_code: payload.ts_code,
+        side: payload.side,
+        order_type: payload.order_type,
+        price: payload.price ?? null,
+        quantity: payload.quantity,
+      })
+    ),
+
+  cancelStockPaperOrder: async (payload: CancelStockPaperOrderRequest) =>
+    unwrap(
+      await invoke<ApiResponse<StockPaperOrder>>("cancel_stock_paper_order", {
+        account_id: payload.account_id,
+        order_id: payload.order_id,
+      })
+    ),
+
+  estimateStockPaperOrder: async (params: { price: number; quantity: number; side: string }) =>
+    unwrap(
+      await invoke<ApiResponse<StockPaperOrderEstimate>>("estimate_stock_paper_order", {
+        price: params.price,
+        quantity: params.quantity,
+        side: params.side,
+      })
+    ),
+
+  generateStockSummary: async (ts_code: string) =>
+    unwrap(await invoke<ApiResponse<AnalysisReport>>("generate_stock_summary", { ts_code })),
+
+  generateStockPortfolioReview: async (account_id: string) =>
+    unwrap(
+      await invoke<ApiResponse<AnalysisReport>>("generate_stock_portfolio_review", { account_id })
+    ),
+
+  generateTradeReview: async (payload: { account_id?: string; days?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<import("@/types").AnalysisReport>>("generate_trade_review", {
+        account_id: payload.account_id ?? null,
+        days: payload.days ?? 30,
+      })
+    ),
 
   streamFollowup: async (
     reportId: string,

@@ -12,6 +12,12 @@ pub mod news_classifier;
 pub mod news_llm_classifier;
 pub mod report_parse;
 pub mod sectors;
+pub mod sim_account;
+pub mod sim_contract;
+pub mod sim_matching;
+pub mod sim_risk;
+pub mod stock_factors;
+pub mod stock_paper;
 
 pub use analysis::{
     build_context, render_prompt, summarize_context, PROMPT_VERSION, SYSTEM_PROMPT,

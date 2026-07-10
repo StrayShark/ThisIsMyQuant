@@ -4,9 +4,10 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::engine::{dimensions, sectors};
 use crate::models::{
-    AnalysisDoneEvent, ApiResponse, DimensionFact, DimensionView, TriggerAnalysisResult,
+    AnalysisDoneEvent, AnalysisReport, ApiResponse, DimensionFact, DimensionView,
+    TriggerAnalysisResult,
 };
-use crate::services::{run_analysis, run_followup};
+use crate::services::{run_analysis, run_followup, SimTradingService};
 use crate::state::AppState;
 
 #[tauri::command]
@@ -204,4 +205,93 @@ pub async fn trigger_comprehensive_analysis(
         "total": total,
         "includes_data_fetch": true
     })))
+}
+
+#[tauri::command]
+pub async fn generate_trade_review(
+    state: State<'_, Arc<AppState>>,
+    account_id: Option<String>,
+    days: Option<i64>,
+) -> Result<ApiResponse<AnalysisReport>, String> {
+    let sim = SimTradingService::new(state.db.clone(), state.quote_cache.clone());
+    let account_id = match account_id {
+        Some(id) => id,
+        None => match sim.default_account() {
+            Ok(a) => a.id,
+            Err(e) => return Ok(ApiResponse::err(e.to_string())),
+        },
+    };
+    let snapshot = match sim.get_snapshot(Some(&account_id)) {
+        Ok(s) => s,
+        Err(e) => return Ok(ApiResponse::err(e.to_string())),
+    };
+    let trades = match sim.list_trades(Some(&account_id), None, 100) {
+        Ok(t) => t,
+        Err(e) => return Ok(ApiResponse::err(e.to_string())),
+    };
+    let journals = match sim.list_journals(Some(&account_id), None, 50) {
+        Ok(j) => j,
+        Err(e) => return Ok(ApiResponse::err(e.to_string())),
+    };
+    let curve = match sim.list_equity_curve(&account_id, days.unwrap_or(30)) {
+        Ok(c) => c,
+        Err(e) => return Ok(ApiResponse::err(e.to_string())),
+    };
+
+    let prompt = format!(
+        "请基于以下模拟交易记录生成一份交易复盘报告。只评价执行纪律、风险暴露和可改进动作，不承诺收益。必须包含免责声明：仅供参考，不构成投资建议。\n\n账户：{}\n权益：{:.2}\n已实现盈亏：{:.2}\n未实现盈亏：{:.2}\n\n近期成交：{} 笔\n{}\n\n复盘日记：{} 条\n{}\n\n资金曲线（最近 7 个点）：{}\n",
+        snapshot.account.name,
+        snapshot.account.equity,
+        snapshot.account.realized_pnl,
+        snapshot.account.unrealized_pnl,
+        trades.len(),
+        serde_json::to_string(&trades).unwrap_or_default(),
+        journals.len(),
+        serde_json::to_string(&journals).unwrap_or_default(),
+        serde_json::to_string(&curve.iter().rev().take(7).collect::<Vec<_>>()).unwrap_or_default(),
+    );
+
+    let llm = state.llm_snapshot();
+    if llm.available_providers().is_empty() {
+        return Ok(ApiResponse::err("no LLM provider configured"));
+    }
+    let provider = state.config().default_llm_provider.clone();
+    let content = match llm
+        .complete(&prompt, "你是一位期货交易复盘教练。", Some(&provider))
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return Ok(ApiResponse::err(e.to_string())),
+    };
+
+    let report = AnalysisReport {
+        id: uuid::Uuid::new_v4().to_string(),
+        symbol: "portfolio".into(),
+        trigger: "trade_review".into(),
+        provider,
+        prompt_version: crate::engine::PROMPT_VERSION.into(),
+        context_summary: format!(
+            "account={} equity={:.2}",
+            snapshot.account.id, snapshot.account.equity
+        ),
+        content: ensure_disclaimer(content),
+        created_at: chrono::Utc::now().to_rfc3339(),
+        tags: vec!["trade_review".into()],
+        dimension_summary: None,
+        news_ids: vec![],
+        anomaly_reason: None,
+    };
+    match state.db.save_report(&report) {
+        Ok(_) => Ok(ApiResponse::ok(report)),
+        Err(e) => Ok(ApiResponse::err(e.to_string())),
+    }
+}
+
+fn ensure_disclaimer(mut content: String) -> String {
+    let disclaimer = "免责声明：以上内容仅供参考，不构成投资建议。";
+    if !content.contains("免责声明") && !content.contains("不构成投资建议") {
+        content.push_str("\n\n");
+        content.push_str(disclaimer);
+    }
+    content
 }

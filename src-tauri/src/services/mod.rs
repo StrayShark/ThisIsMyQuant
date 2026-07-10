@@ -16,8 +16,12 @@ mod news_ingest;
 mod news_poll;
 mod news_reclassify;
 mod quote_cache;
+mod replay_runner;
 mod runtime_poll;
 mod schedule_runner;
+mod sim_trading;
+mod stock_data_sync;
+mod stock_paper_trading;
 
 pub use analysis_followup::run_followup;
 pub use analysis_runner::run_analysis;
@@ -43,8 +47,12 @@ pub use quote_cache::{
     is_daily_klines_stale, merge_forming_daily, prev_close_from_klines, resolve_prev_close,
     QuoteCache,
 };
+pub use replay_runner::{spawn_replay_loop, ReplayRunner};
 pub use runtime_poll::restart_runtime_polls;
 pub use schedule_runner::{
     new_schedule_status, run_comprehensive_analysis, run_full_cycle, ScheduleHandle,
     ScheduleStatusHandle,
 };
+pub use sim_trading::{emit_sim_update, SimTradingService};
+pub use stock_data_sync::{spawn_stock_data_sync, StockDataSyncService};
+pub use stock_paper_trading::{spawn_stock_paper_eod, StockPaperTradingService};

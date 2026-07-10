@@ -1,6 +1,7 @@
 # 使用方式（USAGE）
 
-> 版本：v2.1 · Tauri 桌面应用
+> 版本：v2.4 · 2026-07-09  
+> 适用形态：Tauri 桌面应用与本地开发环境
 
 ---
 
@@ -8,79 +9,170 @@
 
 | 依赖 | 版本 | 说明 |
 |---|---|---|
-| Rust | stable | [rustup.rs](https://rustup.rs/) |
-| Node.js | 20+ | |
-| pnpm | 9+ | |
+| Rust | stable | 建议使用 rustup。 |
+| Node.js | 20+ | 前端与脚本运行环境。 |
+| pnpm | 9+ | 根 workspace 包管理。 |
+| Docker | 可选 | 运行 Linux CI 镜像。 |
 
-### 配置
-
-```bash
-bash scripts/sync-env.sh   # 从 ~/global_env 同步金十 Token、LLM Key 等到 .env
-```
-
-| 变量 | 必填 | 说明 |
-|---|---|---|
-| `JIN10_MCP_TOKEN` | 推荐 | 金十资讯 / 财经日历 |
-| `DOUBAO_API_KEY` 等 | 推荐 | 本地 debug 可写入 `.env` 并自动导入 SQLite |
-| `DATABASE_URL` | 否 | 默认 `sqlite:///data/quant.db` |
-
-### LLM API Key
-
-| 场景 | 配置方式 |
-|---|---|
-| **Release 安装包** | 首次启动 Landing 页或 **设置 → 配置 LLM API Key** |
-| **本地 debug** | `sync-env.sh` 后 debug 构建自动导入 SQLite（DB 无凭据时） |
-
-运营项在 **设置页** 编辑并持久化，无需改 `.env`。
-
----
-
-## 2. 开发与打包
+安装依赖：
 
 ```bash
 pnpm install
-pnpm tauri:dev
-pnpm tauri:build
-bash scripts/release-smoke.sh
 ```
 
----
+同步本地凭据：
 
-## 3. 测试
+```bash
+bash scripts/sync-env.sh
+```
+
+`sync-env.sh` 会从 `~/global_env/.env` 同步金十 Token、LLM Key 等到项目 `.env`。本地临时修改 `.env` 前请注意该脚本可能覆盖同名变量。
+
+## 2. 配置
+
+| 变量 | 必填 | 说明 |
+|---|---|---|
+| `DATABASE_URL` | 否 | 默认 `sqlite:///data/quant.db`。 |
+| `JIN10_MCP_TOKEN` | 推荐 | 金十 MCP 备用日历通道。 |
+| `JINSHI_RILI_API_BASE` | 否 | 金十日历 HTTP base。 |
+| `DEFAULT_LLM_PROVIDER` | 推荐 | 默认 LLM Provider。 |
+| `DOUBAO_API_KEY` / `OPENAI_API_KEY` 等 | 推荐 | LLM 分析和追问。 |
+| `WATCHLIST` | 否 | 默认关注品种。 |
+| `ENCRYPTION_KEY` | 推荐 | 本地凭据加密。 |
+
+Release 包首次启动可在设置页配置 LLM Key；本地 debug 可通过 `.env` 自动导入 SQLite 凭据表。
+
+## 3. 启动
+
+完整桌面应用：
+
+```bash
+pnpm tauri:dev
+```
+
+仅前端开发：
+
+```bash
+pnpm --dir frontend dev
+```
+
+生产构建：
+
+```bash
+pnpm tauri:build
+```
+
+## 4. 页面使用
+
+| 页面 | 使用方式 |
+|---|---|
+| 总览 | 查看模拟账户权益、持仓风险、五大板块概览、决策流、因子快照、异动信号、报告工作流和外盘联动。 |
+| 行情 | 选择中文品种名，查看主力连续 K 线、周期、指标和行情状态。 |
+| 模拟盘 | 选择虚拟账户，提交模拟委托，查看持仓、委托、成交、保证金、手续费和风险度。 |
+| 复盘 | 记录交易计划、执行复盘、情绪标签，查看资金曲线、胜率、回撤和品种贡献。 |
+| 回放 | 选择品种和交易日，播放历史行情，隐藏未来数据并练习模拟下单。 |
+| A 股 | 查看 A 股总览、行业概念、个股、筛选器、财报、资金情绪和模拟组合。 |
+| 因子 | 按板块、品种或维度查看供需、库存、宏观、外盘、政策等因子。 |
+| 资讯 | 查看金十期货资讯分类结果，追踪影响品种和维度。 |
+| 日历 | 查看重要宏观事件及其潜在影响板块。 |
+| 异动 | 查看价格、波动、成交和数据异常预警，可触发快评。 |
+| 助手 | 基于报告和上下文追问，进行研究型 Copilot 对话。 |
+| 报告 | 按品种、触发类型、日期筛选报告，查看归档和免责声明。 |
+| 品种 | 查看五大商品板块下的主流期货品种、主力符号和交易所。 |
+| 数据库 | 管理本地行情、资讯、报告、模拟订单、成交、持仓、资金曲线和复盘记录。 |
+| 状态 | 检查 AKShare/Sina、金十、日历、LLM、SQLite、模拟引擎、后台任务状态。 |
+| 设置 | 配置 Provider、凭据、关注列表、调度和偏好。 |
+
+## 5. AI 分析
+
+支持的触发类型：
+
+| 类型 | 说明 |
+|---|---|
+| 手动分析 | 用户在行情、报告或助手中主动触发。 |
+| 明日展望 | 默认用于每日简报和次日计划。 |
+| 短期研判 | 用于盘中或异动后的短周期判断。 |
+| 批量分析 | 按关注列表或板块批量生成报告。 |
+| 异动快评 | 异动预警触发的简短分析。 |
+| 追问 | 基于已有报告和上下文继续问答。 |
+
+所有报告仅供参考，不构成投资建议。若 LLM 未主动输出免责声明，后端会自动追加。
+
+## 6. 模拟盘
+
+模拟盘只使用虚拟资金和本地撮合，不连接真实交易柜台。
+
+| 功能 | 说明 |
+|---|---|
+| 虚拟账户 | 可创建多个账户，设置初始资金，用于不同练习场景。 |
+| 模拟下单 | 支持买开、卖开、买平、卖平、平今、平昨和撤单。 |
+| 合约规则 | 保证金率、手续费、合约乘数、最小变动价位和滑点可配置。 |
+| 风控 | 资金不足、最大手数、风险度阈值会触发拒单或警告。 |
+| 条件单 | 后续支持止损、止盈、OCO 和移动止损。 |
+| 交易复盘 | 每笔模拟交易可关联计划、资讯、报告、情绪标签和执行评分。 |
+
+所有下单入口都应显示“模拟”标识。导出的交易记录也应标记为模拟交易。
+
+## 7. 数据说明
+
+| 数据 | 说明 |
+|---|---|
+| 行情 | 当前主链路为 AKShare/Sina 主力连续行情轮询。 |
+| 资讯 | 金十期货分类和综合资讯，低频轮询并本地缓存。 |
+| 日历 | 金十财经日历，默认关注重要宏观事件。 |
+| 外盘 | Yahoo 等公开源作为参考，不作为交易级实时行情。 |
+| 模拟交易 | 本地撮合引擎生成订单、成交、持仓、资金曲线和复盘记录。 |
+| A 股 | AKShare/Baostock/Tushare 可选，覆盖股票目录、指数、日 K、行业概念、财务和资金面。 |
+| 存储 | SQLite `data/quant.db`，保存行情、资讯、报告、模拟交易和复盘数据。 |
+
+UI 中出现 `history`、`reference`、`estimated`、`pending`、`stale`、`error` 等状态时，表示该数据不是完全新鲜的实时值。
+
+## 8. A 股市场分析
+
+| 功能 | 说明 |
+|---|---|
+| A 股总览 | 查看主要指数、涨跌家数、涨跌停、成交额、行业热力和市场宽度。 |
+| 行业概念 | 查看行业/概念排行、成分股、资金流、领涨领跌。 |
+| 个股工作台 | 查看 K 线、基础资料、财务摘要、估值、资金面、公告新闻和同行对比。 |
+| 股票筛选器 | 按市值、行业、涨跌幅、成交额、估值、财务和技术条件筛选股票。 |
+| 财报中心 | 查看收入、利润、ROE、毛利率、现金流、负债和杜邦拆解。 |
+| 模拟组合 | 使用虚拟资金练习 A 股组合，不接券商实盘交易。 |
+
+财务、估值和筛选结果必须显示报告期、数据源和更新时间。
+
+## 9. 测试
 
 | 命令 | 说明 |
 |---|---|
-| `pnpm test:e2e` | UI Mock 冒烟 |
-| `pnpm test:e2e:client` | 启动 Tauri + LLM 明日/短期 Live E2E |
-| `cargo test --manifest-path src-tauri/Cargo.toml --lib` | Rust 单元测试 |
+| `pnpm --dir frontend tsc` | 前端类型检查。 |
+| `pnpm --dir frontend lint` | 前端 ESLint。 |
+| `pnpm --dir frontend test` | Vitest 单元测试。 |
+| `pnpm test:e2e` | Playwright mock E2E。 |
+| `pnpm test:e2e:client` | 真实 Tauri 后端 client live E2E。 |
+| `cargo test --manifest-path src-tauri/Cargo.toml --lib` | Rust 单元测试。 |
+| `cargo test --manifest-path src-tauri/Cargo.toml --test integration_test -- --nocapture` | Rust 集成测试。 |
+| `pnpm test:ci` | macOS 本地 CI。 |
+| `pnpm test:ci:linux` | Linux Docker CI。 |
+| `pnpm test:ci:all` | 推送前完整检查。 |
 
----
-
-## 4. AI 分析
-
-- Copilot：**手动** / **明日展望** / **短期研判**
-- 定时任务：设置页配置周期与分析类型
-- 每日简报：默认 17:00 对 watchlist 跑「明日展望」
-- 异动：价格异动触发分析
-
-报告页可按触发类型筛选。
-
----
-
-## 5. 脚本
+## 10. 常用脚本
 
 | 脚本 | 作用 |
 |---|---|
-| `scripts/sync-env.sh` | 同步 global_env |
-| `scripts/e2e-client.sh` | 客户端 Live E2E |
-| `scripts/release-smoke.sh` | Release 编译冒烟 |
+| `scripts/sync-env.sh` | 从 `~/global_env/.env` 同步本地凭据。 |
+| `scripts/e2e-client.sh` | 启动真实后端并运行 client live E2E。 |
+| `scripts/release-smoke.sh` | Release 编译冒烟。 |
+| `scripts/install-githooks.sh` | 重装 Git hooks。 |
 
----
-
-## 6. 排障
+## 11. 排障
 
 | 现象 | 排查 |
 |---|---|
-| 进 Landing | Release 需配置 LLM Key |
-| 分析失败 | Key、设置页大模型状态 |
-| Live E2E 超时 | Key 与端口 5173/17845 |
+| 进入 Landing 或提示未配置 LLM | 在设置页或 `.env` 中配置 LLM Key。 |
+| 金十资讯/日历为空 | 检查 Token、网络、源站限制和状态页错误信息。 |
+| 行情旧值 | 查看状态页数据源时间；可能是源站失败或非交易时段。 |
+| 模拟下单被拒 | 检查虚拟账户资金、合约规则、保证金率、最大手数和当前回放/行情状态。 |
+| A 股筛选结果为空 | 检查股票目录、财务数据报告期、筛选条件和数据同步状态。 |
+| 报告失败 | 检查 LLM Provider、模型名、Key、额度和网络。 |
+| Live E2E 超时 | 确认端口 5173、17845 未被占用，凭据有效。 |
+| 数据库异常 | 备份后检查 `data/quant.db`，必要时删除本地测试库重新初始化。 |

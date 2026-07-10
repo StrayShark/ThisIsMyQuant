@@ -61,6 +61,7 @@ pub async fn run_analysis(
 
     let parsed = parse_llm_report(&raw_content);
     let news_ids = collect_news_ids(&ctx);
+    let content = ensure_report_disclaimer(parsed.content);
 
     let report = AnalysisReport {
         id: Uuid::new_v4().to_string(),
@@ -69,7 +70,7 @@ pub async fn run_analysis(
         provider: provider_name,
         prompt_version: PROMPT_VERSION.into(),
         context_summary: summarize_context(&ctx),
-        content: parsed.content,
+        content,
         created_at: Utc::now().to_rfc3339(),
         tags: vec![],
         dimension_summary: parsed.dimension_summary,
@@ -113,4 +114,29 @@ pub async fn run_analysis(
     }
 
     Ok(report)
+}
+
+fn ensure_report_disclaimer(content: String) -> String {
+    if content.contains("不构成投资建议") {
+        content
+    } else {
+        format!("{content}\n\n> 免责声明：本分析仅供参考，不构成投资建议。")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_report_disclaimer;
+
+    #[test]
+    fn appends_disclaimer_when_llm_omits_it() {
+        let content = ensure_report_disclaimer("短期关注区间震荡。".into());
+        assert!(content.contains("不构成投资建议"));
+    }
+
+    #[test]
+    fn keeps_existing_disclaimer() {
+        let input = "本分析仅供参考，不构成投资建议。".to_string();
+        assert_eq!(ensure_report_disclaimer(input.clone()), input);
+    }
 }

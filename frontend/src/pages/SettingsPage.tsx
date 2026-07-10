@@ -18,6 +18,7 @@ import {
   type SettingsSectionId,
 } from "@/features/settings/settings-sections";
 import { AppearanceSettingsPanel } from "@/features/settings/AppearanceSettingsPanel";
+import { SimulationRulesPanel } from "@/features/settings/SimulationRulesPanel";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import type { NewsRecord, ScheduleStatus } from "@/types";
 
@@ -972,6 +973,8 @@ export function SettingsPage() {
             {exportMsg && <p className="text-xs text-muted-foreground">{exportMsg}</p>}
           </>
         );
+      case "simulation":
+        return <SimulationRulesPanel />;
       case "debug":
         return (
           <>

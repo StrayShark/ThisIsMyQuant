@@ -31,6 +31,9 @@ src-tauri/target/
 logs/
 *.log
 
+# -------------------- 本地设计稿输出 --------------------
+docs/A_STOCK_UI_INTERACTION_DESIGN.html
+
 # -------------------- IDE --------------------
 .idea/
 .vscode/

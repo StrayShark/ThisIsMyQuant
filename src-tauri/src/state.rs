@@ -2,13 +2,14 @@ use std::sync::{Arc, RwLock};
 
 use tokio::sync::Mutex;
 
-use crate::adapters::{AkshareClient, JinshiClient, LlmRouter};
+use crate::adapters::{AkshareClient, AkshareStockProvider, JinshiClient, LlmRouter};
 use crate::config::{Config, LlmProviderConfig, UserPreferences};
 use crate::db::Database;
 use crate::models::Tick;
 use crate::services::{
     resolve_prev_close, AnomalyWatcher, BackfillStatusHandle, BatchAnalysisHandle,
-    MarketPollHandle, NewsPollHandle, QuoteCache, ScheduleHandle, ScheduleStatusHandle,
+    MarketPollHandle, NewsPollHandle, QuoteCache, ReplayRunner, ScheduleHandle,
+    ScheduleStatusHandle, SimTradingService, StockDataSyncService, StockPaperTradingService,
 };
 
 pub struct AppState {
@@ -16,6 +17,7 @@ pub struct AppState {
     pub user_preferences: Arc<RwLock<UserPreferences>>,
     pub db: Arc<Database>,
     pub akshare: AkshareClient,
+    pub stock_provider: AkshareStockProvider,
     pub jinshi: Arc<Mutex<JinshiClient>>,
     pub llm: Arc<RwLock<LlmRouter>>,
     pub market_poll: Arc<Mutex<Option<Arc<MarketPollHandle>>>>,
@@ -28,6 +30,10 @@ pub struct AppState {
     pub feed_source: String,
     pub batch_analysis: BatchAnalysisHandle,
     pub quote_cache: Arc<RwLock<QuoteCache>>,
+    pub sim_trading: Arc<SimTradingService>,
+    pub stock_sync: Arc<StockDataSyncService>,
+    pub stock_paper: Arc<StockPaperTradingService>,
+    pub replay_runner: Arc<RwLock<Option<ReplayRunner>>>,
 }
 
 impl AppState {

@@ -4,13 +4,16 @@
 
 ## 1. 项目概述
 
-**ThisIsMyQuant** 是一款面向中国国内期货市场的分析型桌面应用，**不提供交易功能**，只做行情、资讯、技术分析与 LLM 研报生成。
+**ThisIsMyQuant** 是一款面向中国国内期货与 A 股市场的模拟盘与本地数据库桌面应用，提供虚拟资金、模拟下单、持仓复盘、行情资讯分析与 LLM 研报生成。项目**不连接实盘交易柜台或券商柜台、不发送真实委托、不托管真实账户**。
 
 - 产品形态：Tauri v2 桌面客户端（Rust 核心 + React 前端）。
 - 目标平台：macOS、Windows、Linux（分别打包为 dmg、msi、appimage）。
-- 数据端：K 线与行情主要来自 AKShare；资讯、财经日历来自金十数据（Jin10）。
-- 分析端：基于规则 + 多维度 LLM Prompt pipeline 生成日报、异动提醒、深度品种研报等。
-- 存储：本地 SQLite（`data/quant.db`），Rust 启动时自动建表，无独立迁移框架。
+- 产品范围：v1 聚焦黑色建材、有色贵金属、农产品软商品、能源化工、航运运价五大商品板块；金融期货不进入默认目录、关注列表、模拟盘或批量分析。
+- A 股范围：规划覆盖指数、行业/概念、个股、财报、资金情绪、股票筛选器和模拟组合；不接券商实盘交易。
+- 数据端：期货 K 线与行情主要来自 AKShare/Sina 主力连续数据；A 股来自 AKShare/Baostock/Tushare 可选；资讯、财经日历来自金十数据（Jin10）；海外行情仅作参考。
+- 模拟端：本地虚拟账户、模拟委托、成交、持仓、保证金、手续费、资金曲线和交易复盘。
+- 分析端：基于规则 + 多维度 LLM Prompt pipeline 生成日报、异动提醒、深度品种研报、A 股个股速览和交易复盘总结。
+- 存储：本地 SQLite（`data/quant.db`），保存行情、资讯、报告、模拟交易和复盘记录；Rust 启动时自动建表，无独立迁移框架。
 
 项目 README 见 [`README.md`](README.md)；更详细的设计与需求文档见 [`docs/`](docs/)。
 
@@ -68,8 +71,8 @@
 │   ├── capabilities/        # Tauri 权限配置
 │   ├── icons/               # 应用图标
 │   ├── src/
-│   │   ├── adapters/        # 外部数据源客户端（AKShare、Jin10、LLM 等）
-│   │   ├── commands.rs      # Tauri command 处理器
+│   │   ├── adapters/        # 外部数据源客户端（AKShare/Sina、Jin10、日历、Yahoo、LLM 等）
+│   │   ├── commands/        # Tauri command 分组处理器
 │   │   ├── config.rs        # 主配置 + .env 加载
 │   │   ├── config/          # 偏好设置、LLM 目录辅助
 │   │   ├── crypto/          # AES-GCM 凭据加密
@@ -248,13 +251,13 @@ pnpm test:ci:linux:rebuild # 重建 CI Docker 镜像后运行 ci:linux
 1. **启动流程**（`src-tauri/src/lib.rs` 的 `bootstrap`）：
    - 加载 `.env` 与用户偏好；
    - 打开 SQLite 并执行 `init_schema()`（`CREATE TABLE IF NOT EXISTS` + 必要的 `ALTER TABLE`）；
-   - 初始化 AKShare/Jin10/LLM router 适配器；
-   - 启动后台服务（行情轮询、资讯轮询、历史回填、定时综合分析、日历提醒等）；
+   - 初始化 AKShare/Sina、Jin10、财经日历、Yahoo、LLM router 适配器；
+   - 启动后台服务（行情轮询、资讯轮询、历史回填、定时综合分析、日历提醒、异动监测等）；
    - 构建 `AppState` 并注册 Tauri commands；
    - 向前端发送 `app-ready` 事件。
 
 2. **前后端通信**：
-   - 请求/响应：前端 `invoke`，Rust `commands.rs` 处理。
+   - 请求/响应：前端 `invoke`，Rust `src-tauri/src/commands/` 处理。
    - 服务端推送：Rust 通过 `AppHandle` 发送事件，如 `kline-update`、`analysis-delta` / `analysis-done` / `analysis-error`、`notification`。
 
 3. **后台服务**（`src-tauri/src/services/`）：
@@ -264,12 +267,15 @@ pnpm test:ci:linux:rebuild # 重建 CI Docker 镜像后运行 ci:linux
    - `schedule_runner`：定时综合分析；
    - `daily_briefing`：日报生成；
    - `anomaly_watcher`：异动监测；
+   - `quote_cache`：行情缓存；
+   - `batch_analysis`：批量分析；
    - `liquidity_job`：流动性快照；
    - `data_maintenance`：数据清理维护。
 
 4. **分析流水线**：
    - 资讯分类（规则 + 可选 LLM）→ 去重（SHA256）→ 维度摘要 → 综合研报。
    - 维度定义见 `docs/FUTURES_ANALYSIS_DESIGN.md` 与 `src-tauri/src/engine/dimensions.rs`。
+   - 专业分析工作台通过 `get_professional_dashboard` 汇总决策流、因子、异动、报告工作流和外盘联动。
 
 ## 8. 配置与凭据
 
@@ -288,7 +294,8 @@ pnpm test:ci:linux:rebuild # 重建 CI Docker 镜像后运行 ci:linux
 
 ## 10. 安全与合规
 
-- **没有交易功能**：应用仅做行情展示与分析，不连接任何交易柜台。
+- **没有真实交易功能**：应用仅做模拟盘、行情展示与分析，不连接任何交易柜台或券商柜台，不发送真实委托。
+- **产品边界**：v1 默认不补充金融期货，后续若接入股指/国债需作为独立扩展规划。
 - **凭据加密**：LLM API key 等敏感配置使用 AES-GCM 加密后落盘，不在日志中明文打印。
 - **外部网络**：前端 CSP 仅允许 `localhost` / `127.0.0.1` 与若干 LLM 服务商域名（Volces、MiniMax、OpenAI、DeepSeek、DashScope）。
 - **Tauri 权限**：权限集中在 `src-tauri/capabilities/default.json`，包括 `core:default`、窗口拖拽/最大化、`shell:allow-open`、`process:allow-exit`/`allow-restart`。

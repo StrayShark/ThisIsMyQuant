@@ -1,6 +1,6 @@
 # 代码规范（CODE STANDARDS）
 
-> 版本：v2.0 · Tauri 单体 Rust 核心
+> 版本：v2.3 · 2026-07-09 · Tauri 单体 Rust 核心
 
 ---
 
@@ -28,13 +28,17 @@
 
 | 层 | 目录 | 职责 |
 |---|---|---|
-| IPC | `commands.rs` | Tauri 命令，参数校验与 `ApiResponse` 封装 |
+| IPC | `commands/` | Tauri 命令分组，参数校验与 `ApiResponse` 封装 |
 | 编排 | `services/` | 轮询、分析任务、入库流程 |
-| 领域 | `engine/` | K 线、指标、Prompt、维度、解析 |
-| 适配 | `adapters/` | AKShare、金十、LLM HTTP |
+| 领域 | `engine/` | K 线、指标、Prompt、维度、板块、异动、解析 |
+| 模拟 | `engine/sim_*`、`services/sim_*` | 本地撮合、虚拟账户、保证金、手续费、绩效 |
+| A 股 | `adapters/stock_*`、`engine/stock_*`、`services/stock_*` | 股票目录、行情、财务、行业概念、筛选器、因子 |
+| 适配 | `adapters/` | AKShare/Sina、金十、日历、Yahoo、LLM HTTP |
 | 持久化 | `db/` | SQLite schema 与查询 |
 
 依赖方向：`commands → services → engine/adapters/db`，禁止反向依赖。
+
+新增面向页面的接口时，优先在 Rust 层返回结构化视图，例如 `ProfessionalDashboardView`，避免前端跨多个底层接口拼装业务事实。
 
 ### 2.3 命名
 
@@ -91,7 +95,11 @@
 ### 3.4 样式
 
 - 颜色、间距走 `src/design/tokens.css` 与 `docs/DESIGN.md`
-- Cursor 极简深色：细边框、低对比、无装饰性产品 Logo
+- UI 方向是专业期货分析工作台：低噪声、可扫描、数据质量明确
+- 模拟盘入口必须清晰标注“模拟”，不得让用户误以为是真实下单
+- 页面必须围绕五大商品板块组织；v1 不新增金融期货默认入口
+- A 股页面必须显示股票代码、交易所、数据源、报告期和复权口径
+- 所有行情、因子、资讯和报告组件都应显示来源、更新时间或数据质量状态
 
 ### 3.5 测试
 
@@ -121,8 +129,18 @@
 ## 5. 领域命名约定
 
 - **symbol**：主力连续大写，如 `RB0`、`AU0`
+- **name**：中文品种名，如“螺纹钢”“黄金”，UI 默认展示中文名
+- **sector**：五大商品板块之一：黑色建材、有色贵金属、农产品软商品、能源化工、航运运价
 - **interval**：`1m/5m/15m/30m/1h/1d`
 - **timestamp**：K 线传输用 ISO 8601 字符串或 Unix 秒（与 `models.rs` 一致）
+- **data_quality**：`live/history/reference/estimated/pending/stale/error`
+- **stock_code**：A 股标准代码，如 `600000.SH`、`000001.SZ`
+- **report_period**：财务报告期，不能用行情日期替代
+- **adjustment**：复权口径，至少区分 none / qfq / hfq
+- **sim_account**：虚拟账户，不对应真实资金账户
+- **sim_order**：模拟委托，状态包括 pending / filled / partial / canceled / rejected
+- **sim_trade**：模拟成交，只由本地撮合生成
+- **offset**：国内期货开平字段：open / close / close_today / close_yesterday
 
 ---
 
@@ -132,6 +150,11 @@
 - 禁止硬编码密码/Key/URL
 - 禁止前端绕过 Tauri 直接调外部 API
 - 禁止把用户凭据写入 LLM prompt
+- 禁止把估算、参考或陈旧数据展示成实时数据
+- 禁止在 v1 默认导航、关注列表或批量分析中补充金融期货
+- 禁止接入真实交易、保存交易密码、发送真实委托或把模拟成交标记为真实成交
+- 禁止接入券商实盘交易、保存证券账户密码或把模拟组合标记为真实持仓
+- 禁止在 A 股筛选器中隐藏报告期、复权口径或数据质量
 - 禁止 `git push --force` 到 `main`
 
 ---

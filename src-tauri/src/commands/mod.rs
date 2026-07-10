@@ -4,7 +4,9 @@ pub mod market;
 pub mod news;
 pub mod reports;
 pub mod settings;
+pub mod simulation;
 pub mod status;
+pub mod stock;
 pub mod testing;
 
 pub use analysis::*;
@@ -13,5 +15,7 @@ pub use market::*;
 pub use news::*;
 pub use reports::*;
 pub use settings::*;
+pub use simulation::*;
 pub use status::*;
+pub use stock::*;
 pub use testing::*;

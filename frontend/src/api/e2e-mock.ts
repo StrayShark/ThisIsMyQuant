@@ -1,6 +1,41 @@
 /** Playwright E2E 用的 API Mock，模拟 Rust Command 响应。 */
 import { STATIC_FUTURES_CATALOG } from "@/data/futures";
-import type { AnalysisReport, AppSettings, CalendarEvent, Contract, DimensionFact, DimensionView, FollowupMessage, Interval, KLine, UserPreferences } from "@/types";
+import type {
+  AnalysisReport,
+  AppSettings,
+  CalendarEvent,
+  Contract,
+  DimensionFact,
+  DimensionView,
+  FollowupMessage,
+  Interval,
+  KLine,
+  PlaceSimOrderRequest,
+  ReplayState,
+  SimAccount,
+  SimAccountSnapshot,
+  SimContractRule,
+  SimEquitySnapshot,
+  SimJournalEntry,
+  SimOrder,
+  SimPosition,
+  SimRiskRule,
+  SimTrade,
+  UserPreferences,
+  AStockDashboardView,
+  StockBar,
+  StockBoardDetailView,
+  StockDetailView,
+  StockScreenTemplate,
+  StockScreenerResultView,
+  StockFinancialMetric,
+  StockWatchlist,
+  StockSymbol,
+  StockPaperAccount,
+  StockPaperPortfolioView,
+  StockPaperOrder,
+  StockPaperOrderEstimate,
+} from "@/types";
 
 const MOCK_KLINES: KLine[] = Array.from({ length: 30 }, (_, i) => {
   const base = 3100 + i * 2;
@@ -150,6 +185,20 @@ const MOCK_FACTS: DimensionFact[] = [
   },
 ];
 
+let mockReplayState: ReplayState = {
+  running: false,
+  symbol: "",
+  date: "",
+  interval: "",
+  account_id: null,
+  current_index: 0,
+  total_bars: 0,
+  current_bar_time: null,
+  current_price: 0,
+  speed: 1,
+  completed: false,
+};
+
 const MOCK_FOLLOWUPS: FollowupMessage[] = [
   {
     id: "fu-1",
@@ -161,6 +210,224 @@ const MOCK_FOLLOWUPS: FollowupMessage[] = [
     created_at: new Date(Date.now() - 3600000).toISOString(),
   },
 ];
+
+const MOCK_STOCK_SYMBOLS: StockSymbol[] = [
+  {
+    ts_code: "600000.SH",
+    symbol: "600000",
+    name: "浦发银行",
+    exchange: "SH",
+    market: "主板",
+    industry: "银行",
+    list_date: "1999-11-10",
+    status: "active",
+    source: "mock",
+    updated_at: new Date().toISOString(),
+  },
+  {
+    ts_code: "000001.SZ",
+    symbol: "000001",
+    name: "平安银行",
+    exchange: "SZ",
+    market: "主板",
+    industry: "银行",
+    list_date: "1991-04-03",
+    status: "active",
+    source: "mock",
+    updated_at: new Date().toISOString(),
+  },
+  {
+    ts_code: "000333.SZ",
+    symbol: "000333",
+    name: "美的集团",
+    exchange: "SZ",
+    market: "主板",
+    industry: "家用电器",
+    list_date: "2013-09-18",
+    status: "active",
+    source: "mock",
+    updated_at: new Date().toISOString(),
+  },
+];
+
+const MOCK_STOCK_BARS: StockBar[] = Array.from({ length: 30 }, (_, i) => {
+  const base = 10 + i * 0.05;
+  const date = new Date(Date.now() - (29 - i) * 86400000);
+  const tradeDate = date.toISOString().slice(0, 10).replace(/-/g, "");
+  return {
+    ts_code: "600000.SH",
+    trade_date: tradeDate,
+    open: base,
+    high: base + 0.1,
+    low: base - 0.08,
+    close: base + 0.03,
+    pre_close: base - 0.02,
+    pct_chg: 0.3,
+    volume: 100000 + i * 1000,
+    amount: 1000000 + i * 10000,
+    turnover_rate: 0.01,
+    adjustment: "none",
+    source: "mock",
+    updated_at: new Date().toISOString(),
+  };
+});
+
+const MOCK_A_STOCK_DASHBOARD: AStockDashboardView = {
+  indices: [
+    { index_code: "000001.SH", name: "上证指数", close: 3050.23, pct_chg: 0.42, amount: 420000000000, trade_date: "20260709", source: "mock", updated_at: new Date().toISOString() },
+    { index_code: "399001.SZ", name: "深证成指", close: 9780.12, pct_chg: 0.18, amount: 560000000000, trade_date: "20260709", source: "mock", updated_at: new Date().toISOString() },
+    { index_code: "399006.SZ", name: "创业板指", close: 1850.45, pct_chg: -0.25, amount: 210000000000, trade_date: "20260709", source: "mock", updated_at: new Date().toISOString() },
+    { index_code: "000688.SH", name: "科创50", close: 720.88, pct_chg: 0.65, amount: 89000000000, trade_date: "20260709", source: "mock", updated_at: new Date().toISOString() },
+  ],
+  breadth: {
+    trade_date: "20260709",
+    up_count: 2850,
+    down_count: 1980,
+    flat_count: 120,
+    limit_up_count: 45,
+    limit_down_count: 8,
+    total_amount: 1189000000000,
+    prev_amount: 1120000000000,
+    amount_change_pct: 6.16,
+    source: "mock",
+    updated_at: new Date().toISOString(),
+  },
+  boards: [
+    { board_code: "BK0475", board_name: "银行", board_type: "industry", pct_chg: 1.2, amount: 45000000000, net_flow: 1200000000, up_count: 35, down_count: 2, trade_date: "20260709" },
+    { board_code: "BK0484", board_name: "半导体", board_type: "industry", pct_chg: 0.85, amount: 62000000000, net_flow: 800000000, up_count: 42, down_count: 18, trade_date: "20260709" },
+    { board_code: "BK0428", board_name: "电力", board_type: "industry", pct_chg: -0.6, amount: 28000000000, net_flow: -500000000, up_count: 15, down_count: 28, trade_date: "20260709" },
+  ],
+  trade_date: "20260709",
+  source: "mock",
+  updated_at: new Date().toISOString(),
+  quality: { status: "available", message: null, last_success_at: "20260709" },
+};
+
+const MOCK_STOCK_DETAIL: StockDetailView = {
+  symbol: MOCK_STOCK_SYMBOLS[0],
+  latest_bar: MOCK_STOCK_BARS[MOCK_STOCK_BARS.length - 1],
+  latest_valuation: {
+    ts_code: "600000.SH",
+    trade_date: "20260709",
+    pe_ttm: 4.5,
+    pb: 0.42,
+    ps_ttm: 1.8,
+    dividend_yield: 5.2,
+    market_cap: 285000000000,
+    float_market_cap: 285000000000,
+    pe_percentile: 12.5,
+    pb_percentile: 8.3,
+    source: "mock",
+    updated_at: new Date().toISOString(),
+  },
+  factor_scores: {
+    ts_code: "600000.SH",
+    factor_date: "20260709",
+    momentum: 55.2,
+    quality: 62.1,
+    valuation: 88.5,
+    growth: 45.3,
+    volatility: 30.8,
+    liquidity: 78.4,
+    capital_flow: null,
+    score: 60.05,
+    factor_version: "v1",
+    source: "mock",
+    updated_at: new Date().toISOString(),
+  },
+  latest_financial: {
+    ts_code: "600000.SH",
+    report_period: "2025-12-31",
+    report_type: "年报",
+    revenue: 170000000000,
+    revenue_yoy: -3.5,
+    net_profit: 42000000000,
+    net_profit_yoy: 1.2,
+    roe: 7.8,
+    gross_margin: null,
+    debt_ratio: 92.1,
+    operating_cash_flow: null,
+    eps: 1.43,
+    source: "mock",
+    updated_at: new Date().toISOString(),
+  },
+  related_boards: [],
+  quality: { status: "available", message: null, last_success_at: "20260709" },
+};
+
+const MOCK_STOCK_FINANCIALS: StockFinancialMetric[] = [
+  {
+    ts_code: "600000.SH",
+    report_period: "2025-12-31",
+    report_type: "年报",
+    revenue: 170000000000,
+    revenue_yoy: -3.5,
+    net_profit: 42000000000,
+    net_profit_yoy: 1.2,
+    roe: 7.8,
+    gross_margin: null,
+    debt_ratio: 92.1,
+    operating_cash_flow: null,
+    eps: 1.43,
+    source: "mock",
+    updated_at: new Date().toISOString(),
+  },
+  {
+    ts_code: "600000.SH",
+    report_period: "2025-09-30",
+    report_type: "三季报",
+    revenue: 125000000000,
+    revenue_yoy: -4.1,
+    net_profit: 31000000000,
+    net_profit_yoy: 0.8,
+    roe: 5.9,
+    gross_margin: null,
+    debt_ratio: 92.3,
+    operating_cash_flow: null,
+    eps: 1.06,
+    source: "mock",
+    updated_at: new Date().toISOString(),
+  },
+];
+
+let MOCK_STOCK_WATCHLISTS: StockWatchlist[] = [];
+
+const MOCK_BOARD_DETAIL: StockBoardDetailView = {
+  board: { board_code: "BK0475", board_name: "银行", board_type: "industry", source: "mock", updated_at: new Date().toISOString() },
+  snapshot: {
+    board_code: "BK0475",
+    trade_date: "20260709",
+    pct_chg: 1.2,
+    amount: 45000000000,
+    turnover_rate: 0.8,
+    net_flow: 1200000000,
+    up_count: 35,
+    down_count: 2,
+    source: "mock",
+    updated_at: new Date().toISOString(),
+  },
+  top_stocks: MOCK_STOCK_SYMBOLS.slice(0, 2).map((s) => ({
+    ...s,
+    close: 12.5,
+    pct_chg: 1.2,
+    amount: 1200000000,
+    market_cap: 285000000000,
+    pe_ttm: 4.5,
+    pb: 0.42,
+    trade_date: "20260709",
+  })),
+  bottom_stocks: [],
+  members: MOCK_STOCK_SYMBOLS.slice(0, 2).map((s) => ({
+    ...s,
+    close: 12.5,
+    pct_chg: 1.2,
+    amount: 1200000000,
+    market_cap: 285000000000,
+    pe_ttm: 4.5,
+    pb: 0.42,
+    trade_date: "20260709",
+  })),
+};
 
 export const e2eMockApi = {
   health: async () => ({
@@ -611,4 +878,573 @@ export const e2eMockApi = {
     });
     return stream.getReader();
   },
+
+
+  listSimAccounts: async () => MOCK_SIM_ACCOUNTS,
+  createSimAccount: async (payload: { name: string; initial_balance: number }) => ({
+    ...MOCK_SIM_ACCOUNT,
+    name: payload.name,
+    initial_balance: payload.initial_balance,
+    cash_balance: payload.initial_balance,
+    equity: payload.initial_balance,
+  }),
+  resetSimAccount: async () => MOCK_SIM_ACCOUNT,
+  getSimAccountSnapshot: async (): Promise<SimAccountSnapshot> => ({
+    account: MOCK_SIM_ACCOUNT,
+    positions: MOCK_SIM_POSITIONS,
+    risk_ratio: 0.12,
+    today_pnl: 1200,
+    pending_orders: 1,
+  }),
+  listSimPositions: async () => MOCK_SIM_POSITIONS,
+  listSimOrders: async (params?: { account_id?: string; status?: string; limit?: number }) => {
+    const order = {
+      id: "order-e2e-new",
+      account_id: "acc-e2e-1",
+      symbol: "RB0",
+      name: "螺纹钢",
+      side: "buy" as const,
+      offset: "open" as const,
+      order_type: "condition" as const,
+      price: null,
+      trigger_price: 3150,
+      stop_loss_price: 3100,
+      take_profit_price: 3300,
+      oco_group_id: null,
+      parent_order_id: null,
+      tif: "GTC" as const,
+      condition_operator: null,
+      trailing_distance_ticks: null,
+      quantity: 1,
+      filled_quantity: 0,
+      status: "open" as const,
+      reason: null,
+      source: "manual" as const,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (params?.status === "open") return [...MOCK_SIM_ORDERS, order];
+    return [...MOCK_SIM_ORDERS, order];
+  },
+  listSimTrades: async () => MOCK_SIM_TRADES,
+  listSimEquityCurve: async () => MOCK_EQUITY_CURVE,
+  getSimPerformance: async () => MOCK_PERFORMANCE,
+  placeSimOrder: async (payload: PlaceSimOrderRequest): Promise<SimOrder> => ({
+    id: "order-e2e-new",
+    account_id: payload.account_id,
+    symbol: payload.symbol,
+    name: "螺纹钢",
+    side: payload.side,
+    offset: payload.offset,
+    order_type: payload.order_type,
+    price: payload.price ?? null,
+    trigger_price: payload.trigger_price ?? null,
+    stop_loss_price: payload.stop_loss_price ?? null,
+    take_profit_price: payload.take_profit_price ?? null,
+    oco_group_id: payload.oco_group_id ?? null,
+    parent_order_id: payload.parent_order_id ?? null,
+    tif: payload.tif ?? null,
+    condition_operator: payload.condition_operator ?? null,
+    trailing_distance_ticks: payload.trailing_distance_ticks ?? null,
+    quantity: payload.quantity,
+    filled_quantity: 0,
+    status: "open",
+    reason: null,
+    source: "manual",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }),
+  cancelSimOrder: async (orderId: string) => {
+    const order = MOCK_SIM_ORDERS.find((o) => o.id === orderId);
+    return { ...(order ?? MOCK_SIM_ORDERS[0]), status: "cancelled" as const };
+  },
+  estimateSimOrder: async () => ({
+    margin_required: 3200,
+    commission_estimate: 6,
+    slippage_estimate: 2,
+    total_cost: 3208,
+  }),
+  listSimContractRules: async () => MOCK_SIM_CONTRACT_RULES,
+  saveSimContractRule: async (payload: SimContractRule) => payload,
+  deleteSimContractRule: async (symbol: string) => symbol,
+  listSimRiskRules: async () => MOCK_SIM_RISK_RULES,
+  saveSimRiskRule: async (payload: SimRiskRule) => payload,
+  deleteSimRiskRule: async (id: string) => id,
+  forceLiquidate: async () => [],
+  saveSimJournalEntry: async (payload: Partial<SimJournalEntry>) => ({
+    id: "journal-e2e-1",
+    account_id: payload.account_id ?? "acc-e2e-1",
+    symbol: payload.symbol ?? "RB0",
+    trade_id: payload.trade_id ?? null,
+    report_id: payload.report_id ?? null,
+    title: payload.title ?? "E2E 复盘",
+    thesis: payload.thesis ?? null,
+    execution_review: payload.execution_review ?? null,
+    emotion_tags: payload.emotion_tags ?? null,
+    score: payload.score ?? null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }),
+  listSimJournalEntries: async () => MOCK_JOURNAL_ENTRIES,
+  startMarketReplay: async () => {
+    mockReplayState = {
+      running: true,
+      symbol: "RB0",
+      date: "2024-01-15",
+      interval: "1m",
+      account_id: "default",
+      current_index: 0,
+      total_bars: 30,
+      current_bar_time: new Date().toISOString(),
+      current_price: 3200,
+      speed: 1,
+      completed: false,
+    };
+    return mockReplayState;
+  },
+  stopMarketReplay: async () => {
+    mockReplayState = { ...mockReplayState, running: false };
+    return mockReplayState;
+  },
+  stepMarketReplay: async () => {
+    mockReplayState = {
+      ...mockReplayState,
+      running: true,
+      current_index: 1,
+      current_bar_time: new Date().toISOString(),
+      current_price: 3202,
+    };
+    return mockReplayState;
+  },
+  getReplayState: async () => mockReplayState,
+  getReplayKlines: async () => {
+    const bars = MOCK_KLINES.slice(0, 5);
+    return {
+      current_index: 4,
+      total_bars: 30,
+      bars,
+    };
+  },
+  getDatabaseSummary: async () => ({
+    path: "data/quant.db",
+    total_size_bytes: 1024 * 1024 * 12,
+    tables: [
+      { name: "klines", row_count: 45200, size_bytes: 1024 * 1024 * 4 },
+      { name: "sim_trades", row_count: 12, size_bytes: 1024 * 16 },
+      { name: "reports", row_count: 8, size_bytes: 1024 * 64 },
+    ],
+  }),
+  backupDatabase: async () => "data/quant.db.bak",
+
+  // A 股 mock
+  listStockSymbols: async (params?: { query?: string; industry?: string }) => {
+    let result = MOCK_STOCK_SYMBOLS;
+    if (params?.query) {
+      const q = params.query.toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.ts_code.toLowerCase().includes(q) ||
+          s.symbol.toLowerCase().includes(q) ||
+          s.name.toLowerCase().includes(q)
+      );
+    }
+    if (params?.industry) {
+      result = result.filter((s) => s.industry === params.industry);
+    }
+    return result;
+  },
+  getAStockDashboard: async () => MOCK_A_STOCK_DASHBOARD,
+  getStockKlines: async () => MOCK_STOCK_BARS,
+  getStockDetail: async () => MOCK_STOCK_DETAIL,
+  listStockIndustries: async () => MOCK_A_STOCK_DASHBOARD.boards,
+  getStockIndustryDetail: async () => MOCK_BOARD_DETAIL,
+  runStockScreener: async (): Promise<StockScreenerResultView> => ({
+    id: "screen-e2e-1",
+    name: "E2E 筛选结果",
+    criteria_json: "{}",
+    trade_date: "20260709",
+    report_period: "2025-12-31",
+    rows: MOCK_STOCK_SYMBOLS.map((s) => ({
+      ...s,
+      close: 12.5,
+      pct_chg: 0.8,
+      amount: 1200000000,
+      market_cap: 285000000000,
+      pe_ttm: 4.5,
+      pb: 0.42,
+      trade_date: "20260709",
+    })),
+    count: MOCK_STOCK_SYMBOLS.length,
+  }),
+  saveStockScreen: async (): Promise<StockScreenTemplate> => ({
+    id: "template-e2e-1",
+    name: "E2E 模板",
+    criteria_json: "{}",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }),
+  listStockScreenTemplates: async (): Promise<StockScreenTemplate[]> => [
+    {
+      id: "template-e2e-1",
+      name: "E2E 低估值模板",
+      criteria_json: JSON.stringify({ min_pe_ttm: 0, max_pe_ttm: 10 }),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ],
+  deleteStockScreenTemplate: async () => null,
+  summarizeStockScreen: async (): Promise<AnalysisReport> => ({
+    ...MOCK_REPORT,
+    id: "stock-screen-summary-e2e",
+    content: "E2E 筛选总结：筛选条件集中在低估值银行板块，结果整体 PE 较低、ROE 稳定，需关注资产质量与宏观利率风险。",
+    tags: ["a-stock", "screen-summary"],
+  }),
+  listStockFinancials: async (): Promise<StockFinancialMetric[]> => MOCK_STOCK_FINANCIALS,
+  listStockWatchlists: async (): Promise<StockWatchlist[]> => MOCK_STOCK_WATCHLISTS,
+  saveStockWatchlist: async (payload: { id?: string; name: string; symbols: string[] }): Promise<StockWatchlist> => {
+    const existingIndex = payload.id ? MOCK_STOCK_WATCHLISTS.findIndex((w) => w.id === payload.id) : -1;
+    const watchlist: StockWatchlist = {
+      id: payload.id ?? `watchlist-${Date.now()}`,
+      name: payload.name,
+      symbols: payload.symbols,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (existingIndex >= 0) {
+      MOCK_STOCK_WATCHLISTS[existingIndex] = watchlist;
+    } else {
+      MOCK_STOCK_WATCHLISTS.push(watchlist);
+    }
+    return watchlist;
+  },
+  deleteStockWatchlist: async (id: string) => {
+    MOCK_STOCK_WATCHLISTS = MOCK_STOCK_WATCHLISTS.filter((w) => w.id !== id);
+    return null;
+  },
+  triggerStockDataSync: async () => ({
+    task_id: "task-e2e-1",
+    scope: "all",
+    status: "queued",
+    message: "A 股同步任务已加入队列（mock）",
+  }),
+
+  // A 股模拟组合 mock
+  listStockPaperAccounts: async (): Promise<StockPaperAccount[]> => [MOCK_STOCK_PAPER_ACCOUNT],
+  createStockPaperAccount: async (payload: { name: string; initial_balance: number }): Promise<StockPaperAccount> => ({
+    ...MOCK_STOCK_PAPER_ACCOUNT,
+    id: "stock-paper-acc-new",
+    name: payload.name,
+    initial_balance: payload.initial_balance,
+    cash_balance: payload.initial_balance,
+    total_equity: payload.initial_balance,
+  }),
+  getStockPaperPortfolio: async (): Promise<StockPaperPortfolioView> => MOCK_STOCK_PAPER_PORTFOLIO,
+  placeStockPaperOrder: async (payload: { side: string; price: number; quantity: number }): Promise<StockPaperOrder> => ({
+    id: "stock-paper-order-new",
+    account_id: "stock-paper-acc-1",
+    ts_code: "600000.SH",
+    name: "浦发银行",
+    side: payload.side,
+    order_type: "limit",
+    price: payload.price,
+    quantity: payload.quantity,
+    filled_quantity: payload.quantity,
+    status: "filled",
+    reason: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }),
+  cancelStockPaperOrder: async (): Promise<StockPaperOrder> => ({
+    ...MOCK_STOCK_PAPER_PORTFOLIO.orders[0],
+    status: "cancelled",
+  }),
+  estimateStockPaperOrder: async (params: {
+    price: number;
+    quantity: number;
+    side: string;
+  }): Promise<StockPaperOrderEstimate> => {
+    const amount = params.price * params.quantity;
+    return {
+      estimated_amount: amount,
+      commission: Math.max(amount * 0.0003, 5),
+      stamp_tax: params.side === "sell" ? amount * 0.001 : 0,
+      transfer_fee: amount * 0.00001,
+      total_cost: amount + Math.max(amount * 0.0003, 5) + (params.side === "sell" ? amount * 0.001 : 0) + amount * 0.00001,
+    };
+  },
+
+  generateStockSummary: async (): Promise<AnalysisReport> => ({
+    ...MOCK_REPORT,
+    id: "stock-summary-e2e",
+    content: "E2E 模拟个股速览：浦发银行基本面稳健，估值处于历史低位，关注资产质量变化。",
+    tags: ["a-stock", "summary"],
+  }),
+
+  generateStockPortfolioReview: async (): Promise<AnalysisReport> => ({
+    ...MOCK_REPORT,
+    id: "stock-portfolio-review-e2e",
+    content: "E2E 模拟组合复盘：当前持仓集中在银行板块，波动较低，建议关注行业景气度变化。",
+    tags: ["a-stock", "portfolio-review"],
+  }),
+
+  generateTradeReview: async () => MOCK_REPORT,
 };
+
+const MOCK_SIM_ACCOUNT: SimAccount = {
+  id: "acc-e2e-1",
+  name: "E2E 模拟账户",
+  currency: "CNY",
+  initial_balance: 1_000_000,
+  cash_balance: 923_400,
+  equity: 987_600,
+  margin_used: 64_000,
+  realized_pnl: 2_400,
+  unrealized_pnl: -840,
+  status: "active",
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
+
+const MOCK_SIM_ACCOUNTS: SimAccount[] = [MOCK_SIM_ACCOUNT];
+
+const MOCK_SIM_CONTRACT_RULES: SimContractRule[] = [
+  {
+    symbol: "RB0",
+    name: "螺纹钢",
+    exchange: "SHFE",
+    contract_multiplier: 10,
+    price_tick: 1,
+    margin_rate_long: 0.1,
+    margin_rate_short: 0.1,
+    commission_mode: "per_hand",
+    commission_open: 3,
+    commission_close: 3,
+    commission_close_today: 0,
+    min_order_qty: 1,
+    lot_size: 1,
+    max_order_qty: 100,
+    daily_price_limit_up: 0,
+    daily_price_limit_down: 0,
+    default_slippage_ticks: 0,
+    is_custom: false,
+    updated_at: new Date().toISOString(),
+  },
+];
+
+const MOCK_SIM_RISK_RULES: SimRiskRule[] = [
+  {
+    id: "risk-e2e-1",
+    account_id: "acc-e2e-1",
+    scope: "account",
+    symbol: null,
+    rule_type: "risk_ratio",
+    threshold: 0.9,
+    action: "block_open",
+    enabled: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
+
+const MOCK_SIM_ORDERS: SimOrder[] = [
+  {
+    id: "order-e2e-1",
+    account_id: "acc-e2e-1",
+    symbol: "RB0",
+    name: "螺纹钢",
+    side: "buy",
+    offset: "open",
+    order_type: "limit",
+    price: 3200,
+    trigger_price: null,
+    stop_loss_price: null,
+    take_profit_price: null,
+    oco_group_id: null,
+    parent_order_id: null,
+    tif: null,
+    condition_operator: null,
+    trailing_distance_ticks: null,
+    quantity: 2,
+    filled_quantity: 2,
+    status: "filled",
+    reason: null,
+    source: "manual",
+    created_at: new Date(Date.now() - 3600000).toISOString(),
+    updated_at: new Date(Date.now() - 3500000).toISOString(),
+  },
+  {
+    id: "order-e2e-2",
+    account_id: "acc-e2e-1",
+    symbol: "RB0",
+    name: "螺纹钢",
+    side: "sell",
+    offset: "close",
+    order_type: "limit",
+    price: 3250,
+    trigger_price: null,
+    stop_loss_price: null,
+    take_profit_price: null,
+    oco_group_id: null,
+    parent_order_id: null,
+    tif: null,
+    condition_operator: null,
+    trailing_distance_ticks: null,
+    quantity: 1,
+    filled_quantity: 0,
+    status: "open",
+    reason: null,
+    source: "manual",
+    created_at: new Date(Date.now() - 600000).toISOString(),
+    updated_at: new Date(Date.now() - 600000).toISOString(),
+  },
+];
+
+const MOCK_SIM_TRADES: SimTrade[] = [
+  {
+    id: "trade-e2e-1",
+    order_id: "order-e2e-1",
+    account_id: "acc-e2e-1",
+    symbol: "RB0",
+    name: "螺纹钢",
+    side: "buy",
+    offset: "open",
+    price: 3200,
+    quantity: 2,
+    commission: 6,
+    slippage: 2,
+    realized_pnl: 0,
+    traded_at: new Date(Date.now() - 3500000).toISOString(),
+  },
+];
+
+const MOCK_SIM_POSITIONS: SimPosition[] = [
+  {
+    account_id: "acc-e2e-1",
+    symbol: "RB0",
+    name: "螺纹钢",
+    position_side: "long",
+    today_qty: 2,
+    history_qty: 0,
+    total_qty: 2,
+    avg_price: 3200,
+    margin: 6400,
+    unrealized_pnl: -840,
+    updated_at: new Date().toISOString(),
+  },
+];
+
+const MOCK_EQUITY_CURVE: SimEquitySnapshot[] = Array.from({ length: 7 }, (_, i) => {
+  const t = new Date(Date.now() - (6 - i) * 86400000).toISOString();
+  return {
+    account_id: "acc-e2e-1",
+    snapshot_at: t,
+    equity: 980000 + i * 1200,
+    cash_balance: 920000 + i * 600,
+    margin_used: 60000 + i * 800,
+    realized_pnl: 1000 + i * 200,
+    unrealized_pnl: -500 + i * 50,
+    risk_ratio: 0.1 + i * 0.002,
+  };
+});
+
+const MOCK_PERFORMANCE = {
+  account_id: "acc-e2e-1",
+  total_return: 12000,
+  total_return_pct: 0.012,
+  total_pnl: 12000,
+  max_drawdown: 3000,
+  max_drawdown_pct: 0.003,
+  win_rate: 0.55,
+  profit_loss_ratio: 1.5,
+  avg_win: 800,
+  avg_loss: 533.33,
+  total_trades: 20,
+  winning_trades: 11,
+  losing_trades: 9,
+  risk_return_ratio: 2.0,
+  symbol_contribution: { RB0: 8000, AU0: 4000 },
+  hourly_contribution: { "09:00": 5000, "10:30": 7000 },
+  avg_holding_hours: 4.5,
+  overnight_count: 1,
+};
+
+const MOCK_STOCK_PAPER_ACCOUNT: StockPaperAccount = {
+  id: "stock-paper-acc-1",
+  name: "A股模拟组合",
+  initial_balance: 1000000,
+  cash_balance: 923400,
+  market_value: 987600,
+  total_equity: 987600,
+  total_cost: 64000,
+  realized_pnl: 0,
+  unrealized_pnl: -840,
+  status: "active",
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
+
+const MOCK_STOCK_PAPER_PORTFOLIO: StockPaperPortfolioView = {
+  account: MOCK_STOCK_PAPER_ACCOUNT,
+  positions: [
+    {
+      account_id: "stock-paper-acc-1",
+      ts_code: "600000.SH",
+      name: "浦发银行",
+      quantity: 100,
+      available_quantity: 100,
+      avg_cost: 10.0,
+      total_cost: 1000,
+      market_value: 1020,
+      unrealized_pnl: 20,
+      updated_at: new Date().toISOString(),
+    },
+  ],
+  orders: [
+    {
+      id: "stock-paper-order-1",
+      account_id: "stock-paper-acc-1",
+      ts_code: "600000.SH",
+      name: "浦发银行",
+      side: "buy",
+      order_type: "limit",
+      price: 10.0,
+      quantity: 100,
+      filled_quantity: 100,
+      status: "filled",
+      reason: null,
+      created_at: new Date(Date.now() - 86400000).toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ],
+  trades: [
+    {
+      id: "stock-paper-trade-1",
+      order_id: "stock-paper-order-1",
+      account_id: "stock-paper-acc-1",
+      ts_code: "600000.SH",
+      name: "浦发银行",
+      side: "buy",
+      price: 10.0,
+      quantity: 100,
+      commission: 5,
+      traded_at: new Date(Date.now() - 86400000).toISOString(),
+    },
+  ],
+};
+
+const MOCK_JOURNAL_ENTRIES: SimJournalEntry[] = [
+  {
+    id: "journal-e2e-1",
+    account_id: "acc-e2e-1",
+    symbol: "RB0",
+    trade_id: "trade-e2e-1",
+    report_id: null,
+    title: "螺纹钢多头试仓",
+    thesis: "需求偏弱但去库延续，轻仓试多。",
+    execution_review: "按计划入场，止损设在前低。",
+    emotion_tags: "谨慎,耐心",
+    score: 7,
+    created_at: new Date(Date.now() - 3400000).toISOString(),
+    updated_at: new Date(Date.now() - 3400000).toISOString(),
+  },
+];
