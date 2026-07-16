@@ -46,19 +46,19 @@
 
 @layer components {
   .panel {
-    @apply rounded-lg border border-border bg-card;
+    @apply rounded-xl border border-border bg-card;
   }
 
   .panel-header {
-    @apply flex h-11 items-center justify-between border-b border-border px-4;
+    @apply flex h-12 items-center justify-between border-b border-border px-5;
   }
 
   .page-scroll {
-    @apply h-full overflow-auto p-8;
+    @apply h-full overflow-auto p-6;
   }
 
   .page-inner {
-    @apply mx-auto max-w-6xl;
+    @apply mx-auto max-w-7xl;
   }
   .pill-thinking {
     background: var(--color-timeline-thinking);
@@ -81,18 +81,16 @@
     color: var(--color-pill-fg-inverse);
   }
 
-  /* Cursor 风格壳层：侧栏与顶栏同高，Tauri macOS 为信号灯留空 */
   :root {
-    --shell-chrome-h: 44px;
-    --shell-controls-h: 44px;
-    --shell-sidebar-expanded: 220px;
-    --shell-sidebar-w: 220px;
+    --shell-chrome-h: 64px;
+    --shell-controls-h: 64px;
+    --shell-sidebar-expanded: 0px;
+    --shell-sidebar-w: 0px;
   }
 
-  /* macOS：运行时由 shell-layout.ts 注入精确值 */
   html.tauri-mac {
-    --shell-chrome-h: 52px;
-    --shell-controls-h: 52px;
+    --shell-chrome-h: 64px;
+    --shell-controls-h: 64px;
   }
 
   [data-tauri-drag-region]:not([data-tauri-drag-region="false"]) {

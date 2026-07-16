@@ -975,6 +975,33 @@ export function SettingsPage() {
         );
       case "simulation":
         return <SimulationRulesPanel />;
+      case "experimental":
+        return (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">实验区</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                进阶训练功能暂不进入主导航；因子解释与异动观察已分别收敛到 AI 和事件资讯。
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/ai">AI 因子解释</Link>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/events">事件异动</Link>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/review">交易复盘</Link>
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/replay">回放训练</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        );
       case "debug":
         return (
           <>

@@ -1,17 +1,25 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw, Download, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { PageShell } from "@/components/layout/PageShell";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { api } from "@/api/client";
 import { useAppStore } from "@/app/store";
-import type { DatabaseTableStats } from "@/types";
+import { DataDomainGrid } from "@/features/database/DataDomainGrid";
+import { DataDomainTable } from "@/features/database/DataDomainTable";
+import { formatBytes, formatDateTime } from "@/features/database/utils";
 
 export function LocalDatabasePage() {
   const queryClient = useQueryClient();
   const showToast = useAppStore((s) => s.showToast);
+  const [restorePath, setRestorePath] = useState("");
+
   const { data: summary, isLoading } = useQuery({
-    queryKey: ["database-summary"],
-    queryFn: () => api.getDatabaseSummary(),
+    queryKey: ["database-domain-summary"],
+    queryFn: () => api.getDatabaseDomainSummary(),
   });
 
   const backup = useMutation({
@@ -20,105 +28,97 @@ export function LocalDatabasePage() {
     onError: (err: Error) => showToast(err.message),
   });
 
+  const restore = useMutation({
+    mutationFn: (path: string) => api.prepareDatabaseRestore(path),
+    onSuccess: (message) => showToast(message),
+    onError: (err: Error) => showToast(err.message),
+  });
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["database-domain-summary"] });
+  };
+
+  const domains = summary?.domains ?? [];
+
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-4xl px-6 py-6">
-        <div className="mb-4">
-          <h1 className="text-xl font-semibold">本地数据库</h1>
-          <p className="text-sm text-muted-foreground">查看和管理本地 SQLite 数据资产</p>
-        </div>
+    <PageShell>
+      <PageHeader title="本地数据库" description="管理本地 SQLite 数据资产">
+        <Button onClick={() => backup.mutate()} disabled={backup.isPending}>
+          <Download className="size-4" aria-hidden="true" />
+          {backup.isPending ? "备份中…" : "立即备份"}
+        </Button>
+        <Button variant="outline" onClick={refresh} disabled={isLoading}>
+          <RefreshCw
+            className={isLoading ? "size-4 animate-spin" : "size-4"}
+            aria-hidden="true"
+          />
+          刷新
+        </Button>
+      </PageHeader>
 
-        <Card className="mb-4">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">存储概览</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading || !summary ? (
-              <div className="text-sm text-muted-foreground">加载中…</div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">数据库路径</span>
-                  <span className="font-mono">{summary.path}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">总大小</span>
-                  <span className="tabular-nums">{formatBytes(summary.total_size_bytes)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">表数量</span>
-                  <span className="tabular-nums">{summary.tables.length}</span>
-                </div>
+      <Card className="mb-6">
+        <CardContent className="space-y-4 py-4">
+          {isLoading || !summary ? (
+            <div className="text-sm text-muted-foreground">加载中…</div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">数据库路径</p>
+                <p className="truncate font-mono text-sm">{summary.path}</p>
               </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="mb-4">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">表空间统计</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading || !summary ? (
-              <div className="text-sm text-muted-foreground">加载中…</div>
-            ) : (
-              <div className="rounded-lg border">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/40">
-                    <tr>
-                      <th className="px-3 py-2 text-left">表名</th>
-                      <th className="px-3 py-2 text-right">行数</th>
-                      <th className="px-3 py-2 text-right">大小</th>
-                      <th className="px-3 py-2 text-left">最近更新</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summary.tables.map((t) => (
-                      <TableRow key={t.name} table={t} />
-                    ))}
-                  </tbody>
-                </table>
+              <div>
+                <p className="text-xs text-muted-foreground">总大小</p>
+                <p className="text-sm font-semibold tabular-nums">
+                  {formatBytes(summary.total_size_bytes)}
+                </p>
               </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">维护操作</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => backup.mutate()} disabled={backup.isPending}>
-                {backup.isPending ? "备份中…" : "立即备份"}
-              </Button>
-              <Button variant="outline" onClick={() => void queryClient.invalidateQueries({ queryKey: ["database-summary"] })}>
-                刷新统计
-              </Button>
+              <div>
+                <p className="text-xs text-muted-foreground">数据域数量</p>
+                <p className="text-sm font-semibold tabular-nums">{domains.length}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">最后更新时间</p>
+                <p className="text-sm tabular-nums">{formatDateTime(summary.updated_at)}</p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">备份文件保存在数据库同目录，可在设置中配置清理策略。</p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
+          )}
+          <div className="flex flex-col gap-2 border-t border-border pt-4 md:flex-row md:items-center">
+            <Input
+              value={restorePath}
+              onChange={(event) => setRestorePath(event.target.value)}
+              placeholder="粘贴 .bak 备份文件路径，校验后生成恢复候选"
+              className="font-mono text-xs"
+            />
+            <Button
+              variant="outline"
+              onClick={() => restore.mutate(restorePath)}
+              disabled={!restorePath.trim() || restore.isPending}
+              className="shrink-0"
+            >
+              <RotateCcw className="size-4" aria-hidden="true" />
+              {restore.isPending ? "校验中…" : "准备恢复"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-function TableRow({ table }: { table: DatabaseTableStats }) {
-  return (
-    <tr className="border-t">
-      <td className="px-3 py-2 font-mono text-xs">{table.name}</td>
-      <td className="px-3 py-2 text-right tabular-nums">{table.row_count.toLocaleString()}</td>
-      <td className="px-3 py-2 text-right tabular-nums">{formatBytes(table.size_bytes)}</td>
-      <td className="px-3 py-2 text-xs text-muted-foreground">
-        {table.last_updated ? new Date(table.last_updated).toLocaleString() : <Badge variant="outline">未知</Badge>}
-      </td>
-    </tr>
-  );
-}
+      <section className="mb-8">
+        <h2 className="mb-4 text-sm font-semibold text-muted-foreground">数据域概览</h2>
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">加载中…</div>
+        ) : (
+          <DataDomainGrid domains={domains} />
+        )}
+      </section>
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+      <section>
+        <h2 className="mb-4 text-sm font-semibold text-muted-foreground">数据域明细</h2>
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">加载中…</div>
+        ) : (
+          <DataDomainTable domains={domains} />
+        )}
+      </section>
+    </PageShell>
+  );
 }

@@ -33,6 +33,8 @@ logs/
 
 # -------------------- 本地设计稿输出 --------------------
 docs/A_STOCK_UI_INTERACTION_DESIGN.html
+docs/CMC_PRODUCT_VISUAL_DESIGN.html
+frontend/.screenshots/
 
 # -------------------- IDE --------------------
 .idea/

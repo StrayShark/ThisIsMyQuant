@@ -2,7 +2,6 @@ use crate::error::AppResult;
 use crate::models::{StockBar, StockFinancialMetric, StockValuationSnapshot};
 
 /// 股票因子计算（A3 阶段实现基础技术/估值/财务因子）
-
 pub struct StockFactorInputs {
     pub bars: Vec<StockBar>,
     pub financial: Option<StockFinancialMetric>,
@@ -22,14 +21,15 @@ pub struct StockFactorScores {
 }
 
 pub fn compute_factors(inputs: &StockFactorInputs) -> AppResult<StockFactorScores> {
-    let mut scores = StockFactorScores::default();
-
-    scores.momentum = compute_momentum(&inputs.bars);
-    scores.volatility = compute_volatility(&inputs.bars);
-    scores.liquidity = compute_liquidity(&inputs.bars);
-    scores.quality = compute_quality(inputs.financial.as_ref());
-    scores.growth = compute_growth(inputs.financial.as_ref());
-    scores.valuation = compute_valuation(inputs.valuation.as_ref());
+    let mut scores = StockFactorScores {
+        momentum: compute_momentum(&inputs.bars),
+        volatility: compute_volatility(&inputs.bars),
+        liquidity: compute_liquidity(&inputs.bars),
+        quality: compute_quality(inputs.financial.as_ref()),
+        growth: compute_growth(inputs.financial.as_ref()),
+        valuation: compute_valuation(inputs.valuation.as_ref()),
+        ..Default::default()
+    };
 
     // 简单等权合成（P1 可扩展为可配置权重）
     let values: Vec<f64> = vec![
@@ -150,7 +150,7 @@ pub fn matches_criteria(
         }
     }
     if let Some(pe) = criteria.max_pe_ttm {
-        if val.and_then(|v| v.pe_ttm).map_or(false, |v| v > pe) {
+        if val.and_then(|v| v.pe_ttm).is_some_and(|v| v > pe) {
             return false;
         }
     }
@@ -160,7 +160,7 @@ pub fn matches_criteria(
         }
     }
     if let Some(pb) = criteria.max_pb {
-        if val.and_then(|v| v.pb).map_or(false, |v| v > pb) {
+        if val.and_then(|v| v.pb).is_some_and(|v| v > pb) {
             return false;
         }
     }
@@ -175,7 +175,7 @@ pub fn matches_criteria(
         }
     }
     if let Some(cap) = criteria.max_market_cap {
-        if val.and_then(|v| v.market_cap).map_or(false, |v| v > cap) {
+        if val.and_then(|v| v.market_cap).is_some_and(|v| v > cap) {
             return false;
         }
     }

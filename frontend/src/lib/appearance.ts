@@ -11,19 +11,16 @@ export const THEME_OPTIONS: {
   title: string;
   description: string;
 }[] = [
-  { id: "cursor", title: "Cursor 黑白", description: "灰阶极简，白/黑 accent" },
-  { id: "matrix", title: "Matrix", description: "Codex 磷光绿终端风" },
-  { id: "dark", title: "深色", description: "经典深色 + 蓝色强调" },
-  { id: "light", title: "浅色", description: "明亮背景" },
-  { id: "system", title: "跟随系统", description: "自动匹配 OS 深/浅" },
+  { id: "light", title: "Coinbase 浅色", description: "白底、蓝色主操作、金融卡片" },
+  { id: "system", title: "跟随系统", description: "系统浅色时使用 Coinbase，深色时使用克制暗色" },
 ];
 
 export const DEFAULT_APPEARANCE: Pick<UserPreferences, "quote_color_scheme" | "theme"> = {
   quote_color_scheme: "green_up",
-  theme: "cursor",
+  theme: "light",
 };
 
-const VALID_THEMES = new Set<string>(["dark", "light", "system", "cursor", "matrix"]);
+const VALID_THEMES = new Set<string>(["light", "system"]);
 
 export function normalizeAppearance(raw: {
   quote_color_scheme?: string;
@@ -32,7 +29,7 @@ export function normalizeAppearance(raw: {
   const quote_color_scheme: QuoteColorScheme =
     raw.quote_color_scheme === "red_up" ? "red_up" : "green_up";
   const theme: AppTheme =
-    raw.theme && VALID_THEMES.has(raw.theme) ? (raw.theme as AppTheme) : "cursor";
+    raw.theme && VALID_THEMES.has(raw.theme) ? (raw.theme as AppTheme) : "light";
   return { quote_color_scheme, theme };
 }
 
@@ -41,9 +38,7 @@ export function resolveAppliedTheme(theme: AppTheme): AppliedTheme {
   if (theme === "system") {
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   }
-  if (theme === "matrix") return "matrix";
-  if (theme === "cursor") return "cursor";
-  return "dark";
+  return "light";
 }
 
 export function applyAppearance(prefs: Pick<UserPreferences, "quote_color_scheme" | "theme">) {

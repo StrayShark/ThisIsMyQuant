@@ -40,6 +40,18 @@ const ENV_LLM_FIELDS: &[EnvLlmField] = &[
         model: "QWEN_MODEL",
     },
     EnvLlmField {
+        provider: "kimi",
+        api_key: "KIMI_API_KEY",
+        base_url: "KIMI_BASE_URL",
+        model: "KIMI_MODEL",
+    },
+    EnvLlmField {
+        provider: "kimi",
+        api_key: "MOONSHOT_API_KEY",
+        base_url: "MOONSHOT_BASE_URL",
+        model: "MOONSHOT_MODEL",
+    },
+    EnvLlmField {
         provider: "openai",
         api_key: "OPENAI_API_KEY",
         base_url: "OPENAI_BASE_URL",

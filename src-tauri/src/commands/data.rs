@@ -1,12 +1,18 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 use tauri::State;
 
+use crate::config::project_root;
 use crate::engine::sectors;
 use crate::models::{
-    AlertSignalView, ApiResponse, DecisionFlowItem, FactorSignal, FactorSnapshot, OverseasLinkView,
+    AlertSignalView, ApiResponse, DataDomainActionRequest, DataDomainActionResult,
+    DatabaseDomainSummary, DecisionFlowItem, FactorSignal, FactorSnapshot, OverseasLinkView,
     ProfessionalDashboardView, ReportWorkflowItem,
+};
+use crate::services::{
+    ingest_poll, run_data_fetch_cycle, IngestDeps, SCHEDULED_CALENDAR_CACHE_KEY,
 };
 use crate::state::AppState;
 
@@ -365,4 +371,257 @@ fn infer_overseas_driver(symbol: &str) -> &'static str {
         "ZC=F" | "ZS=F" | "ZM=F" => "农产品",
         _ => "海外参考",
     }
+}
+
+// ============================================================================
+// CMC 重构 P1-2：数据库资产中心（数据域管理）
+// ============================================================================
+
+#[tauri::command]
+pub fn get_database_domain_summary(
+    state: State<'_, Arc<AppState>>,
+) -> Result<ApiResponse<DatabaseDomainSummary>, String> {
+    let path = state.config().database_path.clone();
+    match state
+        .db
+        .get_database_domain_summary(path.to_str().unwrap_or(""))
+    {
+        Ok(data) => Ok(ApiResponse::ok(data)),
+        Err(e) => Ok(ApiResponse::err(e.to_string())),
+    }
+}
+
+#[tauri::command]
+pub async fn sync_data_domain(
+    state: State<'_, Arc<AppState>>,
+    request: DataDomainActionRequest,
+) -> Result<ApiResponse<DataDomainActionResult>, String> {
+    let domain = request.domain.as_str();
+    let result = match domain {
+        "quotes" | "klines" => {
+            let summary = run_data_fetch_cycle(state.inner()).await?;
+            {
+                let mut st = state.schedule_status.lock().await;
+                st.last_data_fetch = Some(summary.clone());
+            }
+            DataDomainActionResult {
+                success: true,
+                domain: request.domain.clone(),
+                action: "sync".into(),
+                message: format!(
+                    "行情/数据同步完成：calendar={}, news={}, klines_symbols={}",
+                    summary.calendar_events, summary.news_items, summary.klines_symbols
+                ),
+                path: None,
+            }
+        }
+        "news" => {
+            let n = sync_news_domain(state.inner()).await?;
+            DataDomainActionResult {
+                success: true,
+                domain: request.domain.clone(),
+                action: "sync".into(),
+                message: format!("资讯同步完成：新增/更新 {n} 条"),
+                path: None,
+            }
+        }
+        "calendar" => {
+            let n = sync_calendar_domain(state.inner()).await?;
+            DataDomainActionResult {
+                success: true,
+                domain: request.domain.clone(),
+                action: "sync".into(),
+                message: format!("财经日历同步完成：{n} 条事件"),
+                path: None,
+            }
+        }
+        "stocks" => {
+            let task_id = uuid::Uuid::new_v4().to_string();
+            let sync = state.stock_sync.clone();
+            let task_id2 = task_id.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = sync.sync_market_snapshot(&task_id2).await {
+                    log::warn!("stock data sync {task_id2}: {e}");
+                }
+            });
+            DataDomainActionResult {
+                success: true,
+                domain: request.domain.clone(),
+                action: "sync".into(),
+                message: "A 股数据同步任务已在后台启动".into(),
+                path: None,
+            }
+        }
+        _ => DataDomainActionResult {
+            success: false,
+            domain: request.domain.clone(),
+            action: "sync".into(),
+            message: "暂不支持同步该数据域".into(),
+            path: None,
+        },
+    };
+    Ok(ApiResponse::ok(result))
+}
+
+#[tauri::command]
+pub async fn export_data_domain(
+    state: State<'_, Arc<AppState>>,
+    request: DataDomainActionRequest,
+) -> Result<ApiResponse<DataDomainActionResult>, String> {
+    let dir = exports_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let ts = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+    let domain = request.domain.as_str();
+
+    let (path, message): (PathBuf, String) = match domain {
+        "klines" => {
+            let klines = state
+                .db
+                .get_recent_klines(5000)
+                .map_err(|e| e.to_string())?;
+            let csv = crate::services::klines_to_csv(&klines);
+            let path = dir.join(format!("klines_{ts}.csv"));
+            std::fs::write(&path, csv).map_err(|e| e.to_string())?;
+            (path, format!("已导出最近 {} 条 K 线", klines.len()))
+        }
+        "reports" => {
+            let reports = state
+                .db
+                .get_reports(None, None, 10000)
+                .map_err(|e| e.to_string())?;
+            let json = serde_json::to_string_pretty(&reports).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("reports_{ts}.json"));
+            std::fs::write(&path, json).map_err(|e| e.to_string())?;
+            (path, format!("已导出 {} 条报告", reports.len()))
+        }
+        "news" => {
+            let news = state.db.get_latest_news(1000).map_err(|e| e.to_string())?;
+            let json = serde_json::to_string_pretty(&news).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("news_{ts}.json"));
+            std::fs::write(&path, json).map_err(|e| e.to_string())?;
+            (path, format!("已导出 {} 条资讯", news.len()))
+        }
+        _ => {
+            let count = state.db.get_domain_record_count(domain).unwrap_or_default();
+            let payload = serde_json::json!({
+                "domain": domain,
+                "record_count": count,
+                "exported_at": Utc::now().to_rfc3339(),
+                "note": "该数据域暂无专用导出格式，仅导出元信息",
+            });
+            let json = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("{domain}_{ts}.json"));
+            std::fs::write(&path, json).map_err(|e| e.to_string())?;
+            (path, format!("已导出 {domain} 元信息（记录数 {count}）"))
+        }
+    };
+
+    Ok(ApiResponse::ok(DataDomainActionResult {
+        success: true,
+        domain: request.domain,
+        action: "export".into(),
+        message,
+        path: Some(path.to_string_lossy().to_string()),
+    }))
+}
+
+#[tauri::command]
+pub fn cleanup_data_domain(
+    state: State<'_, Arc<AppState>>,
+    request: DataDomainActionRequest,
+) -> Result<ApiResponse<DataDomainActionResult>, String> {
+    let domain = request.domain.as_str();
+    let cfg = state.config();
+    let (success, message) = match domain {
+        "news" => {
+            let n = state.db.purge_old_news(90).map_err(|e| e.to_string())?;
+            (true, format!("已清理 {n} 条 90 天前的资讯"))
+        }
+        "calendar" => {
+            let n = state
+                .db
+                .purge_old_calendar_cache(7)
+                .map_err(|e| e.to_string())?;
+            (true, format!("已清理 {n} 条过期日历缓存"))
+        }
+        "reports" => {
+            let n = state.db.purge_old_reports(180).map_err(|e| e.to_string())?;
+            (true, format!("已清理 {n} 条 180 天前的报告"))
+        }
+        "klines" => {
+            let n1 = state
+                .db
+                .purge_old_klines_except_daily(cfg.retention_days_klines)
+                .map_err(|e| e.to_string())?;
+            let n2 = state
+                .db
+                .purge_old_ticks(cfg.retention_days_ticks)
+                .map_err(|e| e.to_string())?;
+            (
+                true,
+                format!("已清理 {n1} 条过期分钟/非日 K 线，{n2} 条过期 tick",),
+            )
+        }
+        _ => (false, "暂不支持清理该数据域".into()),
+    };
+    Ok(ApiResponse::ok(DataDomainActionResult {
+        success,
+        domain: request.domain,
+        action: "cleanup".into(),
+        message,
+        path: None,
+    }))
+}
+
+fn exports_dir() -> PathBuf {
+    project_root().join("data").join("exports")
+}
+
+async fn sync_news_domain(state: &AppState) -> Result<usize, String> {
+    let (jinshi_enabled, news_classify, default_llm_provider) = {
+        let cfg = state.config();
+        (
+            cfg.jinshi_enabled,
+            cfg.news_classify.clone(),
+            cfg.default_llm_provider.clone(),
+        )
+    };
+    if !jinshi_enabled {
+        return Ok(0);
+    }
+    let jinshi = state.jinshi.lock().await;
+    if !jinshi.is_connected() {
+        return Ok(0);
+    }
+    let llm = state.llm_snapshot();
+    let deps = IngestDeps {
+        jinshi: &jinshi,
+        db: &state.db,
+        llm: Some(&llm),
+        classify_cfg: &news_classify,
+        default_llm_provider: &default_llm_provider,
+    };
+    let (items, _labels) = ingest_poll(&deps, 20).await.map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+async fn sync_calendar_domain(state: &AppState) -> Result<usize, String> {
+    let jinshi_enabled = state.config().jinshi_enabled;
+    if !jinshi_enabled {
+        return Ok(0);
+    }
+    let (start, end) = crate::adapters::default_calendar_range_from_today();
+    let events = state
+        .jinshi
+        .lock()
+        .await
+        .fetch_calendar_events(start, end, 3, None)
+        .await
+        .map_err(|e| e.to_string())?;
+    let n = events.len();
+    state
+        .db
+        .save_calendar_cache(SCHEDULED_CALENDAR_CACHE_KEY, &events, None)
+        .map_err(|e| e.to_string())?;
+    Ok(n)
 }

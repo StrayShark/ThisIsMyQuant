@@ -1341,3 +1341,341 @@ pub struct StockPaperOrderEstimate {
     pub transfer_fee: f64,
     pub total_cost: f64,
 }
+
+// ============================================================================
+// CMC 重构：统一市场资产与自选（P0）
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketAsset {
+    pub symbol: String,
+    pub name: String,
+    pub market: String, // "futures" | "stock"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sector: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub industry: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub price: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub change_pct: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub change_amount: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turnover: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sparkline: Option<Vec<f64>>,
+    pub quality: String,
+    pub source: String,
+    pub updated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub watched: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_qty: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_side: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MarketOverview {
+    pub futures_sectors: Vec<MarketSectorBrief>,
+    pub a_stock_indices: Vec<MarketIndexBrief>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_breadth: Option<MarketBreadthBrief>,
+    pub watchlist_move_count: i64,
+    pub data_source_health: std::collections::HashMap<String, String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MarketSectorBrief {
+    pub code: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pct_chg: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MarketIndexBrief {
+    pub code: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub close: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pct_chg: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MarketBreadthBrief {
+    pub up_count: i64,
+    pub down_count: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_amount: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MarketAssetQuery {
+    pub market: Option<String>,
+    pub sector: Option<String>,
+    pub industry: Option<String>,
+    pub quality: Option<String>,
+    pub watched: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_turnover: Option<f64>,
+    pub query: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_desc: Option<bool>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MarketAssetSearchResult {
+    pub assets: Vec<MarketAsset>,
+    pub total: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MarketLeaderboardQuery {
+    pub category: String,
+    pub market: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MarketLeaderboard {
+    pub category: String,
+    pub label: String,
+    pub assets: Vec<MarketAsset>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AssetSparklineQuery {
+    pub symbol: String,
+    pub market: String,
+    pub points: Option<i64>,
+}
+
+// 统一自选
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchlistGroup {
+    pub id: String,
+    pub name: String,
+    pub sort_order: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchlistItem {
+    pub id: String,
+    pub group_id: String,
+    pub asset_type: String, // "futures" | "stock"
+    pub symbol: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alert_price: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alert_pct: Option<f64>,
+    pub sort_order: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SaveWatchlistGroupRequest {
+    pub id: Option<String>,
+    pub name: String,
+    pub sort_order: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SaveWatchlistItemRequest {
+    pub id: Option<String>,
+    pub group_id: String,
+    pub asset_type: String,
+    pub symbol: String,
+    pub name: String,
+    pub notes: Option<String>,
+    pub alert_price: Option<f64>,
+    pub alert_pct: Option<f64>,
+    pub sort_order: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WatchlistSummary {
+    pub total_count: i64,
+    pub futures_count: i64,
+    pub stock_count: i64,
+    pub move_count: i64,
+    pub event_count: i64,
+}
+
+// 统一事件资讯（P1 预留）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketEvent {
+    pub id: String,
+    pub title: String,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_url: Option<String>,
+    pub display_time: String,
+    pub importance: String,
+    pub event_type: String,
+    pub affected_symbols: Vec<String>,
+    pub affected_sectors: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direction: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    pub created_at: String,
+}
+
+// 引用式 AI（P1 预留）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiSource {
+    pub source_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_time: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AiReportSummary {
+    pub id: String,
+    pub task_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_symbol: Option<String>,
+    pub content: String,
+    pub sources: Vec<AiSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_date: Option<String>,
+    pub disclaimer: String,
+    pub provider: String,
+    pub created_at: String,
+}
+
+// ============================================================================
+// CMC 重构：P1 事件资讯中心
+// ============================================================================
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MarketEventQuery {
+    pub source: Option<String>,
+    pub symbol: Option<String>,
+    pub sector: Option<String>,
+    pub importance: Option<String>,
+    pub event_type: Option<String>,
+    pub start: Option<String>,
+    pub end: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MarketEventListResult {
+    pub events: Vec<MarketEvent>,
+    pub total: i64,
+    pub by_source: std::collections::HashMap<String, i64>,
+}
+
+// ============================================================================
+// CMC 重构：P1 数据库资产中心
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataDomainTimeRange {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataDomain {
+    pub code: String,
+    pub name: String,
+    pub description: String,
+    pub record_count: i64,
+    pub size_bytes: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_range: Option<DataDomainTimeRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_updated: Option<String>,
+    pub source: String,
+    pub quality: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DataDomainActionRequest {
+    pub domain: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DataDomainActionResult {
+    pub success: bool,
+    pub domain: String,
+    pub action: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DatabaseDomainSummary {
+    pub path: String,
+    pub total_size_bytes: i64,
+    pub domains: Vec<DataDomain>,
+    pub updated_at: String,
+}
+
+// ============================================================================
+// CMC 重构：P1 引用式 AI
+// ============================================================================
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AiSummaryRequest {
+    pub task_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_symbol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_assets: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiTask {
+    pub id: String,
+    pub task_type: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_symbol: Option<String>,
+    pub provider: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AiTaskListResult {
+    pub tasks: Vec<AiTask>,
+    pub running: i64,
+}

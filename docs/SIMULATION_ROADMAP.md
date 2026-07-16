@@ -163,7 +163,7 @@
 
 #### 4.3.1 K 线交易标记
 
-- 在 `SymbolDetailPage` / `MarketReplayPage` 的 lightweight-charts 上：
+- 在 `AssetDetailPage` / `MarketReplayPage` 的 lightweight-charts 上：
   - 标记模拟开平仓点（箭头/圆点）。
   - 绘制持仓成本线、止损线、止盈线。
   - 标记条件单/画线触发线。

@@ -32,7 +32,7 @@ pub struct UserPreferences {
     pub calendar_reminder_mins: u64,
     /// green_up | red_up
     pub quote_color_scheme: String,
-    /// dark | light | system | cursor | matrix
+    /// light | system
     pub theme: String,
 }
 
@@ -64,7 +64,7 @@ impl Default for UserPreferences {
             calendar_reminder_enabled: true,
             calendar_reminder_mins: 30,
             quote_color_scheme: "green_up".into(),
-            theme: "cursor".into(),
+            theme: "light".into(),
         }
     }
 }
@@ -85,11 +85,8 @@ impl UserPreferences {
         if !matches!(self.quote_color_scheme.as_str(), "green_up" | "red_up") {
             self.quote_color_scheme = "green_up".into();
         }
-        if !matches!(
-            self.theme.as_str(),
-            "dark" | "light" | "system" | "cursor" | "matrix"
-        ) {
-            self.theme = "cursor".into();
+        if !matches!(self.theme.as_str(), "light" | "system") {
+            self.theme = "light".into();
         }
         self
     }
@@ -148,7 +145,7 @@ impl UserPreferences {
             calendar_reminder_enabled: cfg.calendar_reminder_enabled,
             calendar_reminder_mins: cfg.calendar_reminder_mins,
             quote_color_scheme: "green_up".into(),
-            theme: "cursor".into(),
+            theme: "light".into(),
         }
     }
 }

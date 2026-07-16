@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tauri::{AppHandle, State};
@@ -456,8 +457,59 @@ pub fn backup_database(state: State<'_, Arc<AppState>>) -> Result<ApiResponse<St
         src.display(),
         chrono::Utc::now().format("%Y%m%d%H%M%S")
     );
-    match std::fs::copy(&src, &dst) {
+    match sqlite_vacuum_into(&src, Path::new(&dst)) {
         Ok(_) => Ok(ApiResponse::ok(dst)),
-        Err(e) => Ok(ApiResponse::err(e.to_string())),
+        Err(e) => Ok(ApiResponse::err(e)),
     }
+}
+
+#[tauri::command]
+pub fn prepare_database_restore(
+    state: State<'_, Arc<AppState>>,
+    backup_path: String,
+) -> Result<ApiResponse<String>, String> {
+    let src = PathBuf::from(backup_path.trim());
+    if !src.exists() {
+        return Ok(ApiResponse::err("备份文件不存在"));
+    }
+    if let Err(e) = validate_sqlite_file(&src) {
+        return Ok(ApiResponse::err(format!("备份文件校验失败：{e}")));
+    }
+    let db_path = state.config().database_path.clone();
+    let restore_dir = db_path
+        .parent()
+        .map(|p| p.join("restore"))
+        .unwrap_or_else(|| PathBuf::from("data/restore"));
+    if let Err(e) = std::fs::create_dir_all(&restore_dir) {
+        return Ok(ApiResponse::err(e.to_string()));
+    }
+    let pending = restore_dir.join("quant.restore.pending.db");
+    if let Err(e) = std::fs::copy(&src, &pending) {
+        return Ok(ApiResponse::err(e.to_string()));
+    }
+    Ok(ApiResponse::ok(format!(
+        "已校验备份并复制到恢复候选：{}。为避免热覆盖 SQLite，请关闭应用后用该文件替换当前数据库。",
+        pending.display()
+    )))
+}
+
+fn sqlite_vacuum_into(src: &Path, dst: &Path) -> Result<(), String> {
+    if dst.exists() {
+        std::fs::remove_file(dst).map_err(|e| e.to_string())?;
+    }
+    let conn = rusqlite::Connection::open(src).map_err(|e| e.to_string())?;
+    let quoted = dst.to_string_lossy().replace('\'', "''");
+    conn.execute_batch(&format!("VACUUM INTO '{}';", quoted))
+        .map_err(|e| e.to_string())
+}
+
+fn validate_sqlite_file(path: &Path) -> Result<(), String> {
+    let conn = rusqlite::Connection::open(path).map_err(|e| e.to_string())?;
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM sqlite_master", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    if count <= 0 {
+        return Err("未找到 SQLite schema".into());
+    }
+    Ok(())
 }

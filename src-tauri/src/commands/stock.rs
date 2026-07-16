@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use tauri::State;
 
+use crate::adapters::{StockBarsRequest, StockDataProvider};
 use crate::engine::stock_factors::{
     compute_factors, matches_criteria, StockFactorInputs, StockScreenerCriteria,
 };
@@ -13,7 +14,7 @@ use crate::models::{
     StockDetailView, StockFactorSnapshot, StockFinancialMetric, StockIndexQuote,
     StockIndustriesQuery, StockIndustryDetailQuery, StockMarketBreadth, StockScreenTemplate,
     StockScreenerRequest, StockScreenerResultView, StockSymbol, StockSymbolSnapshot,
-    StockSymbolsQuery, StockWatchlist,
+    StockSymbolsQuery, StockValuationSnapshot, StockWatchlist,
 };
 use crate::state::AppState;
 
@@ -23,6 +24,17 @@ pub async fn list_stock_symbols(
     query: StockSymbolsQuery,
 ) -> Result<ApiResponse<Vec<StockSymbol>>, String> {
     let db = &state.db;
+    if db.count_stock_symbols().unwrap_or(0) == 0 {
+        match state.stock_provider.list_symbols().await {
+            Ok(symbols) if !symbols.is_empty() => {
+                if let Err(e) = db.save_stock_symbols(&symbols) {
+                    return Ok(ApiResponse::err(e.to_string()));
+                }
+            }
+            Ok(_) => {}
+            Err(e) => log::debug!("list_stock_symbols live fallback: {e}"),
+        }
+    }
     match db.list_stock_symbols(
         query.query.as_deref(),
         query.industry.as_deref(),
@@ -51,7 +63,20 @@ pub async fn get_a_stock_dashboard(
             "000688.SH" => "科创50",
             _ => code,
         };
-        let bars = db.get_stock_index_daily_bars(code, 1).unwrap_or_default();
+        let mut bars = db.get_stock_index_daily_bars(code, 1).unwrap_or_default();
+        if bars.is_empty() {
+            let req = StockBarsRequest {
+                code: code.to_string(),
+                adjustment: "none".to_string(),
+                start_date: None,
+                end_date: None,
+                limit: 1,
+            };
+            if let Ok(fetched) = state.stock_provider.list_index_bars(req).await {
+                let _ = db.save_stock_index_daily_bars(&fetched);
+                bars = fetched;
+            }
+        }
         let (close, pct_chg, amount, trade_date) = bars
             .last()
             .map(|b| (b.close, b.pct_chg, b.amount, Some(b.trade_date.clone())))
@@ -143,8 +168,23 @@ pub async fn get_stock_klines(
         .db
         .get_stock_daily_bars(&ts_code, &adj, limit.unwrap_or(250))
     {
-        Ok(bars) => Ok(ApiResponse::ok(bars)),
-        Err(e) => Ok(ApiResponse::err(e.to_string())),
+        Ok(bars) if !bars.is_empty() => Ok(ApiResponse::ok(bars)),
+        _ => {
+            let req = StockBarsRequest {
+                code: ts_code.clone(),
+                adjustment: adj.clone(),
+                start_date: None,
+                end_date: None,
+                limit: limit.unwrap_or(250),
+            };
+            match state.stock_provider.list_stock_bars(req).await {
+                Ok(bars) => {
+                    let _ = state.db.save_stock_daily_bars(&bars);
+                    Ok(ApiResponse::ok(bars))
+                }
+                Err(e) => Ok(ApiResponse::err(e.to_string())),
+            }
+        }
     }
 }
 
@@ -156,18 +196,32 @@ pub async fn get_stock_detail(
     let db = &state.db;
     let symbol = match db.get_stock_symbol(&query.ts_code) {
         Ok(Some(s)) => s,
-        Ok(None) => return Ok(ApiResponse::err("symbol not found")),
+        Ok(None) => match ensure_stock_symbol(&state, &query.ts_code).await {
+            Ok(Some(s)) => s,
+            Ok(None) => return Ok(ApiResponse::err("symbol not found")),
+            Err(e) => return Ok(ApiResponse::err(e.to_string())),
+        },
         Err(e) => return Ok(ApiResponse::err(e.to_string())),
     };
-    let bars = db
+    let mut bars = db
         .get_stock_daily_bars(&query.ts_code, "none", 250)
         .unwrap_or_default();
+    if bars.is_empty() {
+        let req = StockBarsRequest {
+            code: query.ts_code.clone(),
+            adjustment: "none".to_string(),
+            start_date: None,
+            end_date: None,
+            limit: 250,
+        };
+        if let Ok(fetched) = state.stock_provider.list_stock_bars(req).await {
+            let _ = db.save_stock_daily_bars(&fetched);
+            bars = fetched;
+        }
+    }
     let latest_bar = bars.last().cloned();
-    let latest_valuation = db.get_latest_stock_valuation(&query.ts_code).ok().flatten();
-    let latest_financial = db
-        .get_stock_financial_metrics(&query.ts_code, 1)
-        .ok()
-        .and_then(|v| v.into_iter().next());
+    let (latest_valuation, latest_financial) =
+        ensure_stock_research_data(&state, &query.ts_code).await;
     let factor_scores = match compute_factors(&StockFactorInputs {
         bars: bars.clone(),
         financial: latest_financial.clone(),
@@ -444,7 +498,14 @@ pub async fn list_stock_financials(
         .db
         .get_stock_financial_metrics(&ts_code, limit.unwrap_or(20))
     {
-        Ok(metrics) => Ok(ApiResponse::ok(metrics)),
+        Ok(metrics) if !metrics.is_empty() => Ok(ApiResponse::ok(metrics)),
+        Ok(_) => match state.stock_provider.list_financial_metrics(&ts_code).await {
+            Ok(metrics) => {
+                let _ = state.db.save_stock_financial_metrics(&metrics);
+                Ok(ApiResponse::ok(metrics))
+            }
+            Err(e) => Ok(ApiResponse::err(e.to_string())),
+        },
         Err(e) => Ok(ApiResponse::err(e.to_string())),
     }
 }
@@ -578,6 +639,48 @@ fn to_symbol_snapshot(
         pb: val.and_then(|v| v.pb),
         trade_date: bar.map(|b| b.trade_date.clone()),
     }
+}
+
+async fn ensure_stock_symbol(
+    state: &AppState,
+    ts_code: &str,
+) -> crate::error::AppResult<Option<StockSymbol>> {
+    if let Some(symbol) = state.db.get_stock_symbol(ts_code)? {
+        return Ok(Some(symbol));
+    }
+
+    let symbols = state.stock_provider.list_symbols().await?;
+    if !symbols.is_empty() {
+        state.db.save_stock_symbols(&symbols)?;
+    }
+    Ok(symbols.into_iter().find(|s| s.ts_code == ts_code))
+}
+
+async fn ensure_stock_research_data(
+    state: &AppState,
+    ts_code: &str,
+) -> (Option<StockValuationSnapshot>, Option<StockFinancialMetric>) {
+    let db = &state.db;
+    let mut latest_valuation = db.get_latest_stock_valuation(ts_code).ok().flatten();
+    if latest_valuation.is_none() {
+        if let Ok(snaps) = state.stock_provider.list_valuation_snapshots(ts_code).await {
+            let _ = db.save_stock_valuation_snapshots(&snaps);
+            latest_valuation = snaps.into_iter().next();
+        }
+    }
+
+    let mut latest_financial = db
+        .get_stock_financial_metrics(ts_code, 1)
+        .ok()
+        .and_then(|v| v.into_iter().next());
+    if latest_financial.is_none() {
+        if let Ok(metrics) = state.stock_provider.list_financial_metrics(ts_code).await {
+            let _ = db.save_stock_financial_metrics(&metrics);
+            latest_financial = metrics.into_iter().next();
+        }
+    }
+
+    (latest_valuation, latest_financial)
 }
 
 #[tauri::command]

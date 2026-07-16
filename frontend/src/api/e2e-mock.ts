@@ -35,6 +35,22 @@ import type {
   StockPaperPortfolioView,
   StockPaperOrder,
   StockPaperOrderEstimate,
+  MarketAsset,
+  MarketOverview,
+  MarketLeaderboard,
+  MarketFilters,
+  MarketAssetSearchResult,
+  WatchlistGroup,
+  WatchlistItem,
+  WatchlistSummary,
+  MarketEvent,
+  MarketEventListResult,
+  DatabaseDomainSummary,
+  DataDomainActionResult,
+  DataDomainCode,
+  AiSummaryRequest,
+  AiReportSummary,
+  AiTaskListResult,
 } from "@/types";
 
 const MOCK_KLINES: KLine[] = Array.from({ length: 30 }, (_, i) => {
@@ -250,6 +266,48 @@ const MOCK_STOCK_SYMBOLS: StockSymbol[] = [
   },
 ];
 
+const MOCK_MARKET_ASSETS: MarketAsset[] = [
+  ...(STATIC_FUTURES_CATALOG ?? []).flatMap((sector) =>
+    sector.products.map(
+      (p): MarketAsset => ({
+        symbol: p.symbol,
+        name: p.name,
+        market: "futures",
+        sector: sector.name,
+        exchange: p.exchange,
+        category: p.code,
+        price: 3200,
+        change_pct: 0.5,
+        change_amount: 16,
+        turnover: 1_000_000,
+        volume: 5000,
+        quality: "live",
+        source: "akshare",
+        updated_at: new Date().toISOString(),
+        watched: false,
+      })
+    )
+  ),
+  ...MOCK_STOCK_SYMBOLS.map(
+    (s): MarketAsset => ({
+      symbol: s.ts_code,
+      name: s.name,
+      market: "stock",
+      industry: s.industry,
+      exchange: s.exchange,
+      price: 12.5,
+      change_pct: 0.8,
+      change_amount: 0.1,
+      turnover: 1_200_000_000,
+      volume: 100_000_000,
+      quality: "live",
+      source: "mock",
+      updated_at: new Date().toISOString(),
+      watched: false,
+    })
+  ),
+];
+
 const MOCK_STOCK_BARS: StockBar[] = Array.from({ length: 30 }, (_, i) => {
   const base = 10 + i * 0.05;
   const date = new Date(Date.now() - (29 - i) * 86400000);
@@ -429,6 +487,22 @@ const MOCK_BOARD_DETAIL: StockBoardDetailView = {
   })),
 };
 
+let MOCK_WATCHLIST_ITEMS: WatchlistItem[] = [
+  {
+    id: "item-e2e-1",
+    group_id: "group-e2e-1",
+    asset_type: "futures",
+    symbol: "RB0",
+    name: "螺纹钢",
+    notes: null,
+    alert_price: null,
+    alert_pct: null,
+    sort_order: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
+
 export const e2eMockApi = {
   health: async () => ({
     data: {
@@ -547,6 +621,17 @@ export const e2eMockApi = {
         base_url: "https://api.deepseek.com",
         model: "deepseek-chat",
       },
+      {
+        name: "kimi",
+        label: "Kimi / Moonshot",
+        default_base_url: "https://api.moonshot.cn/v1",
+        default_model: "kimi-k2-0711-preview",
+        key_required: true,
+        configured: false,
+        api_key_masked: "（未配置）",
+        base_url: "https://api.moonshot.cn/v1",
+        model: "kimi-k2-0711-preview",
+      },
     ],
   }),
 
@@ -582,7 +667,7 @@ export const e2eMockApi = {
       calendar_reminder_enabled: true,
       calendar_reminder_mins: 30,
       quote_color_scheme: "green_up" as const,
-      theme: "cursor" as const,
+      theme: "light" as const,
     };
     return prefs;
   },
@@ -1035,6 +1120,168 @@ export const e2eMockApi = {
     ],
   }),
   backupDatabase: async () => "data/quant.db.bak",
+  prepareDatabaseRestore: async (backupPath: string) =>
+    `已校验备份并复制到恢复候选：${backupPath}.restore.pending.db`,
+
+  getDatabaseDomainSummary: async (): Promise<DatabaseDomainSummary> => ({
+    path: "data/quant.db",
+    total_size_bytes: 1024 * 1024 * 12,
+    updated_at: new Date().toISOString(),
+    domains: [
+      {
+        code: "quotes" as DataDomainCode,
+        name: "行情报价",
+        description: "实时行情与主力连续报价数据",
+        record_count: 12480,
+        size_bytes: 1024 * 1024 * 1,
+        time_range: { start: new Date(Date.now() - 86400000).toISOString(), end: new Date().toISOString() },
+        last_updated: new Date().toISOString(),
+        source: "akshare",
+        quality: "live",
+      },
+      {
+        code: "klines" as DataDomainCode,
+        name: "K线数据",
+        description: "期货与股票历史K线",
+        record_count: 45200,
+        size_bytes: 1024 * 1024 * 4,
+        time_range: { start: "2024-01-01T00:00:00Z", end: new Date().toISOString() },
+        last_updated: new Date(Date.now() - 3600000).toISOString(),
+        source: "akshare",
+        quality: "history",
+      },
+      {
+        code: "news" as DataDomainCode,
+        name: "资讯",
+        description: "市场资讯与分类标签",
+        record_count: 3890,
+        size_bytes: 1024 * 1024 * 2,
+        time_range: { start: new Date(Date.now() - 7 * 86400000).toISOString(), end: new Date().toISOString() },
+        last_updated: new Date(Date.now() - 1800000).toISOString(),
+        source: "jin10",
+        quality: "live",
+      },
+      {
+        code: "calendar" as DataDomainCode,
+        name: "财经日历",
+        description: "全球财经事件与数据公布",
+        record_count: 420,
+        size_bytes: 1024 * 256,
+        time_range: { start: new Date().toISOString(), end: new Date(Date.now() + 7 * 86400000).toISOString() },
+        last_updated: new Date(Date.now() - 7200000).toISOString(),
+        source: "jin10",
+        quality: "history",
+      },
+      {
+        code: "reports" as DataDomainCode,
+        name: "研报",
+        description: "品种研报与AI摘要",
+        record_count: 86,
+        size_bytes: 1024 * 1024 * 1,
+        time_range: { start: new Date(Date.now() - 30 * 86400000).toISOString(), end: new Date().toISOString() },
+        last_updated: new Date(Date.now() - 86400000).toISOString(),
+        source: "llm",
+        quality: "local",
+      },
+      {
+        code: "simulation" as DataDomainCode,
+        name: "模拟交易",
+        description: "模拟账户、委托、成交与持仓",
+        record_count: 12,
+        size_bytes: 1024 * 64,
+        last_updated: new Date().toISOString(),
+        source: "local",
+        quality: "local",
+      },
+      {
+        code: "watchlist" as DataDomainCode,
+        name: "自选",
+        description: "用户自选分组与标的",
+        record_count: 24,
+        size_bytes: 1024 * 32,
+        last_updated: new Date().toISOString(),
+        source: "local",
+        quality: "local",
+      },
+      {
+        code: "stocks" as DataDomainCode,
+        name: "A股",
+        description: "A股股票、指数、财报与估值数据",
+        record_count: 5600,
+        size_bytes: 1024 * 1024 * 3,
+        time_range: { start: "2024-01-01T00:00:00Z", end: new Date().toISOString() },
+        last_updated: new Date(Date.now() - 3600000).toISOString(),
+        source: "akshare",
+        quality: "history",
+      },
+      {
+        code: "settings" as DataDomainCode,
+        name: "设置",
+        description: "用户偏好与系统配置",
+        record_count: 8,
+        size_bytes: 1024 * 16,
+        last_updated: new Date().toISOString(),
+        source: "local",
+        quality: "local",
+      },
+    ],
+  }),
+
+  syncDataDomain: async (domain: DataDomainCode): Promise<DataDomainActionResult> => ({
+    success: true,
+    domain,
+    action: "sync",
+    message: `数据域 ${domain} 同步任务已启动（mock）`,
+  }),
+
+  exportDataDomain: async (domain: DataDomainCode): Promise<DataDomainActionResult> => ({
+    success: true,
+    domain,
+    action: "export",
+    message: `数据域 ${domain} 导出成功（mock）`,
+    path: `data/export/${domain}.csv`,
+  }),
+
+  cleanupDataDomain: async (domain: DataDomainCode): Promise<DataDomainActionResult> => ({
+    success: true,
+    domain,
+    action: "cleanup",
+    message: `数据域 ${domain} 已清理（mock）`,
+  }),
+
+  generateAiSummary: async (_payload: AiSummaryRequest): Promise<AiReportSummary> => ({
+    id: `ai-summary-e2e-${Date.now()}`,
+    task_type: _payload.task_type,
+    target_symbol: _payload.target_symbol ?? null,
+    content: "E2E 模拟 AI 摘要：市场维持震荡，关注事件对相关板块的情绪影响。",
+    sources: [
+      {
+        type: "news",
+        title: "E2E 模拟资讯源",
+        display_time: new Date().toISOString(),
+      },
+    ],
+    data_date: new Date().toISOString().slice(0, 10),
+    disclaimer: "仅供研究与复盘，不构成投资建议",
+    provider: "doubao",
+    created_at: new Date().toISOString(),
+  }),
+
+  listAiTasks: async (): Promise<AiTaskListResult> => ({
+    tasks: [
+      {
+        id: "ai-task-e2e-1",
+        task_type: "market_summary",
+        status: "done",
+        target_symbol: null,
+        provider: "doubao",
+        error: null,
+        created_at: new Date(Date.now() - 3600000).toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ],
+    running: 0,
+  }),
 
   // A 股 mock
   listStockSymbols: async (params?: { query?: string; industry?: string }) => {
@@ -1188,6 +1435,339 @@ export const e2eMockApi = {
   }),
 
   generateTradeReview: async () => MOCK_REPORT,
+
+  // CMC 重构：统一市场 API mock
+  getMarketOverview: async (): Promise<MarketOverview> => ({
+    futures_sectors: STATIC_FUTURES_CATALOG.map((s) => ({
+      code: s.code,
+      name: s.name,
+      pct_chg: 0.5,
+    })),
+    a_stock_indices: [
+      { code: "000001.SH", name: "上证指数", close: 3200, pct_chg: 0.3 },
+      { code: "399001.SZ", name: "深证成指", close: 10500, pct_chg: -0.1 },
+    ],
+    market_breadth: {
+      up_count: 2100,
+      down_count: 1900,
+      total_amount: 8_500_000_000_000,
+    },
+    watchlist_move_count: 3,
+    data_source_health: {
+      akshare: "live",
+      jin10: "live",
+      baostock: "history",
+    },
+    updated_at: new Date().toISOString(),
+  }),
+
+  listMarketAssets: async (
+    params: MarketFilters & { sort_by?: string; sort_desc?: boolean; limit?: number; offset?: number }
+  ): Promise<MarketAssetSearchResult> => {
+    let assets = [...MOCK_MARKET_ASSETS];
+    const market = params.market ?? "all";
+    if (market !== "all") {
+      assets = assets.filter((a) => a.market === market);
+    }
+    if (params.sector) {
+      assets = assets.filter((a) => a.sector === params.sector);
+    }
+    if (params.industry) {
+      assets = assets.filter((a) => a.industry === params.industry);
+    }
+    if (params.quality) {
+      assets = assets.filter((a) => a.quality === params.quality);
+    }
+    if (params.query) {
+      const q = params.query.toLowerCase();
+      assets = assets.filter(
+        (a) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q)
+      );
+    }
+    if (params.watched) {
+      const watchedSymbols = new Set(MOCK_WATCHLIST_ITEMS.map((i) => i.symbol));
+      assets = assets.filter((a) => watchedSymbols.has(a.symbol));
+    }
+
+    const sortBy = params.sort_by ?? "turnover";
+    const desc = params.sort_desc ?? true;
+    assets.sort((a, b) => {
+      const av = (a as unknown as Record<string, unknown>)[sortBy] ?? 0;
+      const bv = (b as unknown as Record<string, unknown>)[sortBy] ?? 0;
+      if (typeof av === "string" && typeof bv === "string") {
+        return desc ? bv.localeCompare(av) : av.localeCompare(bv);
+      }
+      const an = Number(av) || 0;
+      const bn = Number(bv) || 0;
+      return desc ? (bn > an ? 1 : bn < an ? -1 : 0) : (an > bn ? 1 : an < bn ? -1 : 0);
+    });
+
+    const limit = params.limit ?? 100;
+    const offset = params.offset ?? 0;
+    return { assets: assets.slice(offset, offset + limit), total: assets.length };
+  },
+
+  getMarketLeaderboard: async (_params: {
+    category: string;
+    market?: string;
+    limit?: number;
+  }): Promise<MarketLeaderboard> => ({
+    category: "gainers",
+    label: "涨幅榜",
+    assets: STATIC_FUTURES_CATALOG[0].products.slice(0, 5).map(
+      (p): MarketAsset => ({
+        symbol: p.symbol,
+        name: p.name,
+        market: "futures",
+        sector: STATIC_FUTURES_CATALOG[0].name,
+        exchange: p.exchange,
+        price: 3200,
+        change_pct: 1.2,
+        change_amount: 38,
+        turnover: 2_000_000,
+        volume: 10_000,
+        quality: "live",
+        source: "akshare",
+        updated_at: new Date().toISOString(),
+        watched: false,
+      })
+    ),
+    updated_at: new Date().toISOString(),
+  }),
+
+  getAssetSparkline: async (_params: { symbol: string; market: string; points?: number }): Promise<number[]> =>
+    Array.from({ length: 24 }, (_, i) => 3100 + Math.sin(i * 0.5) * 50 + i * 2),
+
+  searchAssets: async (query: string, limit = 8): Promise<MarketAssetSearchResult> => {
+    const q = query.trim().toLowerCase();
+    if (!q) return { assets: [], total: 0 };
+    const assets = MOCK_MARKET_ASSETS.filter(
+      (a) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q)
+    ).slice(0, limit);
+    return { assets, total: assets.length };
+  },
+
+  // 统一自选 API mock
+  listWatchlistGroups: async (): Promise<WatchlistGroup[]> => [
+    {
+      id: "group-e2e-1",
+      name: "默认自选",
+      sort_order: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ],
+
+  createWatchlistGroup: async (payload: { name: string; sort_order?: number }): Promise<WatchlistGroup> => ({
+    id: `group-e2e-${Date.now()}`,
+    name: payload.name,
+    sort_order: payload.sort_order ?? 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }),
+
+  updateWatchlistGroup: async (payload: { id: string; name: string; sort_order?: number }): Promise<WatchlistGroup> => ({
+    id: payload.id,
+    name: payload.name,
+    sort_order: payload.sort_order ?? 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }),
+
+  deleteWatchlistGroup: async (_id: string): Promise<void> => undefined,
+
+  listWatchlistItems: async (groupId?: string): Promise<WatchlistItem[]> => {
+    if (!groupId || groupId === "all") return MOCK_WATCHLIST_ITEMS;
+    return MOCK_WATCHLIST_ITEMS.filter((i) => i.group_id === groupId);
+  },
+
+  addWatchlistItem: async (payload: {
+    group_id: string;
+    asset_type: "futures" | "stock";
+    symbol: string;
+    name: string;
+    notes?: string;
+    alert_price?: number;
+    alert_pct?: number;
+  }): Promise<WatchlistItem> => {
+    const item: WatchlistItem = {
+      id: `item-e2e-${Date.now()}`,
+      group_id: payload.group_id,
+      asset_type: payload.asset_type,
+      symbol: payload.symbol,
+      name: payload.name,
+      notes: payload.notes ?? null,
+      alert_price: payload.alert_price ?? null,
+      alert_pct: payload.alert_pct ?? null,
+      sort_order: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    MOCK_WATCHLIST_ITEMS.push(item);
+    return item;
+  },
+
+  updateWatchlistItem: async (payload: {
+    id: string;
+    group_id: string;
+    asset_type: "futures" | "stock";
+    symbol: string;
+    name: string;
+    notes?: string;
+    alert_price?: number;
+    alert_pct?: number;
+    sort_order?: number;
+  }): Promise<WatchlistItem> => {
+    const index = MOCK_WATCHLIST_ITEMS.findIndex((i) => i.id === payload.id);
+    const item: WatchlistItem = {
+      id: payload.id,
+      group_id: payload.group_id,
+      asset_type: payload.asset_type,
+      symbol: payload.symbol,
+      name: payload.name,
+      notes: payload.notes ?? null,
+      alert_price: payload.alert_price ?? null,
+      alert_pct: payload.alert_pct ?? null,
+      sort_order: payload.sort_order ?? 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (index >= 0) {
+      MOCK_WATCHLIST_ITEMS[index] = item;
+    }
+    return item;
+  },
+
+  removeWatchlistItem: async (id: string): Promise<void> => {
+    MOCK_WATCHLIST_ITEMS = MOCK_WATCHLIST_ITEMS.filter((i) => i.id !== id);
+  },
+
+  getWatchlistSummary: async (): Promise<WatchlistSummary> => ({
+    total_count: 3,
+    futures_count: 2,
+    stock_count: 1,
+    move_count: 1,
+    event_count: 2,
+  }),
+
+  getWatchlistEvents: async (): Promise<MarketEvent[]> => [
+    {
+      id: "event-e2e-1",
+      title: "螺纹钢库存数据公布",
+      source: "calendar",
+      source_id: null,
+      source_url: null,
+      display_time: new Date().toISOString(),
+      importance: "high",
+      event_type: "data_release",
+      affected_symbols: ["RB0"],
+      affected_sectors: ["黑色建材"],
+      direction: "neutral",
+      summary: null,
+      created_at: new Date().toISOString(),
+    },
+  ],
+
+  // CMC 重构：P1 事件资讯中心
+  listMarketEvents: async (params?: {
+    source?: string | null;
+    symbol?: string | null;
+    sector?: string | null;
+    importance?: string | null;
+    event_type?: string | null;
+    start?: string | null;
+    end?: string | null;
+    limit?: number | null;
+  }): Promise<MarketEventListResult> => {
+    let events: MarketEvent[] = [
+      {
+        id: "event-e2e-1",
+        title: "螺纹钢库存数据公布",
+        source: "calendar",
+        source_id: "cal-e2e-1",
+        source_url: null,
+        display_time: new Date().toISOString(),
+        importance: "high",
+        event_type: "data_release",
+        affected_symbols: ["RB0"],
+        affected_sectors: ["黑色建材"],
+        direction: "neutral",
+        summary: "前值: 500 | 预期: 480 | 公布: 475",
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: "event-e2e-2",
+        title: "螺纹钢需求偏弱，地产新开工下滑",
+        source: "jin10",
+        source_id: "news-e2e-1",
+        source_url: "",
+        display_time: new Date(Date.now() - 3600000).toISOString(),
+        importance: "medium",
+        event_type: "industry",
+        affected_symbols: ["RB0"],
+        affected_sectors: ["黑色建材"],
+        direction: "bearish",
+        summary: "终端需求恢复缓慢，贸易商观望情绪较浓。",
+        created_at: new Date(Date.now() - 3600000).toISOString(),
+      },
+      {
+        id: "event-e2e-3",
+        title: "美国CPI月率",
+        source: "calendar",
+        source_id: "cal-e2e-2",
+        source_url: null,
+        display_time: new Date(Date.now() + 86400000).toISOString(),
+        importance: "high",
+        event_type: "macro",
+        affected_symbols: [],
+        affected_sectors: [],
+        direction: "neutral",
+        summary: "前值: 0.2% | 预期: 0.3%",
+        created_at: new Date().toISOString(),
+      },
+    ];
+
+    if (params?.source && params.source !== "all") {
+      events = events.filter((e) => e.source === params.source);
+    }
+    if (params?.symbol) {
+      const sym = params.symbol.toUpperCase();
+      events = events.filter((e) =>
+        e.affected_symbols.some((s) => s.toUpperCase() === sym)
+      );
+    }
+    if (params?.sector) {
+      const sec = params.sector;
+      events = events.filter((e) =>
+        e.affected_sectors.some((s) => s.includes(sec))
+      );
+    }
+    if (params?.importance && params.importance !== "all") {
+      events = events.filter((e) => e.importance === params.importance);
+    }
+    if (params?.event_type && params.event_type !== "all") {
+      events = events.filter((e) => e.event_type === params.event_type);
+    }
+
+    events.sort((a, b) => new Date(b.display_time).getTime() - new Date(a.display_time).getTime());
+
+    const by_source: Record<string, number> = {
+      jin10: 0,
+      calendar: 0,
+      announcement: 0,
+      earnings: 0,
+      industry: 0,
+    };
+    for (const e of events) {
+      by_source[e.source] = (by_source[e.source] ?? 0) + 1;
+    }
+
+    return {
+      events: events.slice(0, params?.limit ?? 50),
+      total: events.length,
+      by_source,
+    };
+  },
 };
 
 const MOCK_SIM_ACCOUNT: SimAccount = {

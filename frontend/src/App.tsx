@@ -9,17 +9,9 @@ import { useAppearance } from "@/hooks/useAppearance";
 import { useNotifications } from "@/hooks/useNotifications";
 import { api } from "@/api/client";
 import { OverviewPage } from "@/pages/OverviewPage";
-import { DashboardPage } from "@/pages/DashboardPage";
 import { ReportsPage } from "@/pages/ReportsPage";
 import { ReportDetailPage } from "@/pages/ReportDetailPage";
 import { ReportComparePage } from "@/pages/ReportComparePage";
-import { SymbolsPage } from "@/pages/SymbolsPage";
-import { SymbolDetailPage } from "@/pages/SymbolDetailPage";
-import { FactorCenterPage } from "@/pages/FactorCenterPage";
-import { NewsDecisionPage } from "@/pages/NewsDecisionPage";
-import { MacroCalendarPage } from "@/pages/MacroCalendarPage";
-import { AnomalyCenterPage } from "@/pages/AnomalyCenterPage";
-import { CopilotPage } from "@/pages/CopilotPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { StatusPage } from "@/pages/StatusPage";
 import { LandingPage } from "@/pages/LandingPage";
@@ -27,7 +19,11 @@ import { SimulationPage } from "@/pages/SimulationPage";
 import { TradingReviewPage } from "@/pages/TradingReviewPage";
 import { MarketReplayPage } from "@/pages/MarketReplayPage";
 import { LocalDatabasePage } from "@/pages/LocalDatabasePage";
-import { AStockPage } from "@/pages/AStockPage";
+import { MarketsPage } from "@/pages/MarketsPage";
+import { AssetDetailPage } from "@/pages/AssetDetailPage";
+import { WatchlistPage } from "@/pages/WatchlistPage";
+import { EventsPage } from "@/pages/EventsPage";
+import { AiPage } from "@/pages/AiPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,18 +45,24 @@ function MainAppRoutes() {
     <AppShell>
       <Routes>
         <Route path="/" element={<OverviewPage />} />
-        <Route path="/workspace" element={<DashboardPage />} />
-        <Route path="/stocks" element={<AStockPage />} />
-        <Route path="/factors" element={<FactorCenterPage />} />
-        <Route path="/news" element={<NewsDecisionPage />} />
-        <Route path="/calendar" element={<MacroCalendarPage />} />
-        <Route path="/anomalies" element={<AnomalyCenterPage />} />
-        <Route path="/copilot" element={<CopilotPage />} />
+        <Route path="/workspace" element={<Navigate to="/markets" replace />} />
+        <Route path="/stocks" element={<Navigate to="/markets" replace />} />
+        <Route path="/markets" element={<MarketsPage />} />
+        <Route path="/markets/futures/:symbol" element={<AssetDetailPage />} />
+        <Route path="/markets/stocks/:symbol" element={<AssetDetailPage />} />
+        <Route path="/watchlist" element={<WatchlistPage />} />
+        <Route path="/symbols" element={<Navigate to="/markets" replace />} />
+        <Route path="/symbols/:symbol" element={<Navigate to="/markets/futures/:symbol" replace />} />
+        <Route path="/news" element={<Navigate to="/events" replace />} />
+        <Route path="/calendar" element={<Navigate to="/events" replace />} />
+        <Route path="/events" element={<EventsPage />} />
+        <Route path="/copilot" element={<Navigate to="/ai" replace />} />
+        <Route path="/ai" element={<AiPage />} />
+        <Route path="/factors" element={<Navigate to="/ai" replace />} />
+        <Route path="/anomalies" element={<Navigate to="/events" replace />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/reports/compare" element={<ReportComparePage />} />
         <Route path="/reports/:id" element={<ReportDetailPage />} />
-        <Route path="/symbols" element={<SymbolsPage />} />
-        <Route path="/symbols/:symbol" element={<SymbolDetailPage />} />
         <Route path="/status" element={<StatusPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/simulation" element={<SimulationPage />} />

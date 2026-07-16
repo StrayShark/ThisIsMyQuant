@@ -1080,3 +1080,259 @@ export interface CancelStockPaperOrderRequest {
   account_id: string;
   order_id: string;
 }
+
+// ============================================================================
+// CMC 重构：统一市场资产与自选（P0）
+// ============================================================================
+
+export type MarketType = "futures" | "stock";
+
+export type DataQualityStatus =
+  | "live"
+  | "history"
+  | "stale"
+  | "error"
+  | "pending"
+  | "estimated"
+  | "reference"
+  | "local";
+
+export interface MarketAsset {
+  symbol: string;
+  name: string;
+  market: MarketType;
+  sector?: string | null;
+  industry?: string | null;
+  category?: string | null;
+  exchange?: string | null;
+  price?: number | null;
+  change_pct?: number | null;
+  change_amount?: number | null;
+  turnover?: number | null;
+  volume?: number | null;
+  sparkline?: number[] | null;
+  quality: DataQualityStatus;
+  source: string;
+  updated_at: string;
+  /** 是否已在自选 */
+  watched?: boolean;
+  /** 模拟持仓相关摘要 */
+  position_qty?: number | null;
+  position_side?: string | null;
+}
+
+export type LeaderboardCategory =
+  | "gainers"
+  | "losers"
+  | "turnover"
+  | "volume_spike"
+  | "watchlist_moves"
+  | "event_related";
+
+export interface MarketLeaderboard {
+  category: LeaderboardCategory;
+  label: string;
+  assets: MarketAsset[];
+  updated_at: string;
+}
+
+export interface MarketOverview {
+  futures_sectors: { code: string; name: string; pct_chg?: number | null }[];
+  a_stock_indices: { code: string; name: string; close?: number | null; pct_chg?: number | null }[];
+  market_breadth?: {
+    up_count: number;
+    down_count: number;
+    total_amount?: number | null;
+  } | null;
+  watchlist_move_count: number;
+  data_source_health: Record<string, DataQualityStatus>;
+  updated_at: string;
+}
+
+export interface MarketFilters {
+  market?: MarketType | "all";
+  sector?: string | null;
+  industry?: string | null;
+  quality?: DataQualityStatus | null;
+  watched?: boolean | null;
+  min_turnover?: number | null;
+  query?: string | null;
+}
+
+export interface MarketAssetSearchResult {
+  assets: MarketAsset[];
+  total: number;
+}
+
+// 统一自选（兼容 A 股 StockWatchlist）
+export interface WatchlistGroup {
+  id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WatchlistItem {
+  id: string;
+  group_id: string;
+  asset_type: MarketType;
+  symbol: string;
+  name: string;
+  notes?: string | null;
+  alert_price?: number | null;
+  alert_pct?: number | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WatchlistSummary {
+  total_count: number;
+  futures_count: number;
+  stock_count: number;
+  move_count: number;
+  event_count: number;
+}
+
+// 统一事件资讯（P1，P0 阶段预留类型）
+export type EventSource = "jin10" | "calendar" | "announcement" | "earnings" | "industry";
+
+export type EventImportance = "high" | "medium" | "low";
+
+export interface MarketEvent {
+  id: string;
+  title: string;
+  source: EventSource;
+  source_id?: string | null;
+  source_url?: string | null;
+  display_time: string;
+  importance: EventImportance;
+  event_type: string;
+  affected_symbols: string[];
+  affected_sectors: string[];
+  direction?: "bullish" | "bearish" | "neutral" | null;
+  summary?: string | null;
+  created_at: string;
+}
+
+// 引用式 AI（P1，P0 阶段预留类型）
+export interface AiSource {
+  type: "quote" | "news" | "calendar" | "financial" | "position" | "report";
+  id?: string | null;
+  title: string;
+  display_time?: string | null;
+  url?: string | null;
+}
+
+export interface AiReportSummary {
+  id: string;
+  task_type: string;
+  target_symbol?: string | null;
+  content: string;
+  sources: AiSource[];
+  data_date?: string | null;
+  disclaimer: string;
+  provider: string;
+  created_at: string;
+}
+
+// ============================================================================
+// CMC 重构：P1 事件资讯中心
+// ============================================================================
+
+export interface MarketEventQuery {
+  source?: EventSource | "all" | null;
+  symbol?: string | null;
+  sector?: string | null;
+  importance?: EventImportance | "all" | null;
+  event_type?: string | null;
+  start?: string | null;
+  end?: string | null;
+  limit?: number | null;
+}
+
+export interface MarketEventListResult {
+  events: MarketEvent[];
+  total: number;
+  by_source: Record<EventSource, number>;
+}
+
+// ============================================================================
+// CMC 重构：P1 数据库资产中心
+// ============================================================================
+
+export type DataDomainCode =
+  | "quotes"
+  | "klines"
+  | "news"
+  | "calendar"
+  | "reports"
+  | "simulation"
+  | "watchlist"
+  | "stocks"
+  | "settings";
+
+export interface DataDomain {
+  code: DataDomainCode;
+  name: string;
+  description: string;
+  record_count: number;
+  size_bytes: number;
+  time_range?: { start?: string | null; end?: string | null } | null;
+  last_updated?: string | null;
+  source: string;
+  quality: DataQualityStatus;
+}
+
+export interface DataDomainActionResult {
+  success: boolean;
+  domain: DataDomainCode;
+  action: "sync" | "export" | "cleanup";
+  message: string;
+  path?: string | null;
+}
+
+export interface DatabaseDomainSummary {
+  path: string;
+  total_size_bytes: number;
+  domains: DataDomain[];
+  updated_at: string;
+}
+
+// ============================================================================
+// CMC 重构：P1 引用式 AI
+// ============================================================================
+
+export type AiTaskType =
+  | "market_summary"
+  | "leaderboard_explain"
+  | "asset_brief"
+  | "watchlist_summary"
+  | "position_risk"
+  | "event_impact"
+  | "custom";
+
+export interface AiSummaryRequest {
+  task_type: AiTaskType;
+  target_symbol?: string | null;
+  target_assets?: string[] | null;
+  prompt?: string | null;
+  provider?: string | null;
+}
+
+export interface AiTask {
+  id: string;
+  task_type: AiTaskType;
+  status: "pending" | "running" | "done" | "error";
+  target_symbol?: string | null;
+  provider: string;
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AiTaskListResult {
+  tasks: AiTask[];
+  running: number;
+}

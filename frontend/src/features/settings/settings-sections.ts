@@ -3,6 +3,7 @@ import {
   Bot,
   CalendarClock,
   Database,
+  FlaskConical,
   HardDrive,
   Palette,
   Scale,
@@ -18,6 +19,7 @@ export type SettingsSectionId =
   | "llm"
   | "simulation"
   | "storage"
+  | "experimental"
   | "debug";
 
 export interface SettingsSection {
@@ -34,6 +36,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: "llm", label: "大模型", icon: Bot },
   { id: "simulation", label: "模拟规则", icon: Scale },
   { id: "storage", label: "存储与导出", icon: HardDrive },
+  { id: "experimental", label: "实验区", icon: FlaskConical },
   { id: "debug", label: "调试", icon: Wrench },
 ];
 

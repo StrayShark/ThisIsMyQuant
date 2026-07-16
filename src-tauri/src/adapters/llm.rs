@@ -78,7 +78,7 @@ impl LlmRouter {
             .json(&body)
             .send()
             .await
-            .map(|r| r.status().is_success() || r.status().as_u16() < 500)
+            .map(|r| r.status().is_success())
             .unwrap_or(false)
     }
 
@@ -179,11 +179,26 @@ impl LlmRouter {
             .json(&body)
             .send()
             .await?;
+        let status = resp.status();
         let data: Value = resp.json().await?;
+        if !status.is_success() {
+            return Err(AppError::Msg(format!(
+                "LLM {} request failed status={} error={}",
+                cfg.name,
+                status,
+                extract_error_message(&data)
+            )));
+        }
         data["choices"][0]["message"]["content"]
             .as_str()
             .map(String::from)
-            .ok_or_else(|| AppError::Msg("empty LLM response".into()))
+            .ok_or_else(|| {
+                AppError::Msg(format!(
+                    "empty LLM response from {}: {}",
+                    cfg.name,
+                    extract_error_message(&data)
+                ))
+            })
     }
 
     /// 低温 JSON 输出（资讯分类等结构化任务）。
@@ -252,6 +267,16 @@ impl LlmRouter {
             .json(&body)
             .send()
             .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let data: Value = resp.json().await.unwrap_or_else(|_| json!({}));
+            return Err(AppError::Msg(format!(
+                "LLM {} stream failed status={} error={}",
+                cfg.name,
+                status,
+                extract_error_message(&data)
+            )));
+        }
         let mut stream = resp.bytes_stream();
         let mut buffer = String::new();
         while let Some(chunk) = stream.next().await {
@@ -267,6 +292,18 @@ impl LlmRouter {
         }
         Ok(())
     }
+}
+
+fn extract_error_message(data: &Value) -> String {
+    data.get("error")
+        .and_then(|err| {
+            err.get("message")
+                .and_then(Value::as_str)
+                .or_else(|| err.as_str())
+        })
+        .or_else(|| data.get("message").and_then(Value::as_str))
+        .unwrap_or("unknown")
+        .to_string()
 }
 
 fn parse_sse_line(line: &str) -> Option<String> {

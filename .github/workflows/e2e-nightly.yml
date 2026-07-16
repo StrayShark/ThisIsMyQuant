@@ -29,7 +29,9 @@ jobs:
           workspaces: src-tauri
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir frontend install --frozen-lockfile
 
       - name: Install Playwright
         working-directory: frontend

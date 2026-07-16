@@ -1,3 +1,4 @@
+pub mod ai_context;
 mod analysis;
 pub mod anomaly;
 pub mod calendar_filter;

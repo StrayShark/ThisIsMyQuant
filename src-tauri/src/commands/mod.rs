@@ -1,5 +1,7 @@
+pub mod ai;
 pub mod analysis;
 pub mod data;
+pub mod events;
 pub mod market;
 pub mod news;
 pub mod reports;
@@ -8,9 +10,12 @@ pub mod simulation;
 pub mod status;
 pub mod stock;
 pub mod testing;
+pub mod watchlist;
 
+pub use ai::*;
 pub use analysis::*;
 pub use data::*;
+pub use events::*;
 pub use market::*;
 pub use news::*;
 pub use reports::*;
@@ -19,3 +24,4 @@ pub use simulation::*;
 pub use status::*;
 pub use stock::*;
 pub use testing::*;
+pub use watchlist::*;

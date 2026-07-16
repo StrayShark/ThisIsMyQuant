@@ -1,27 +1,27 @@
 # A 股功能实现文档
 
-> 版本：v0.1 · 2026-07-09  
-> 依据：`docs/A_STOCK_MARKET_ANALYSIS_DESIGN.md`、`docs/A_STOCK_UI_INTERACTION_DESIGN.html`  
-> 目标：把 A 股市场分析、股票筛选、本地数据库和模拟组合拆解为可实施的工程任务  
+> 版本：v0.2 · 2026-07-11
+> 依据：`docs/A_STOCK_MARKET_ANALYSIS_DESIGN.md`、`docs/A_STOCK_UI_INTERACTION_DESIGN.html`（历史设计稿）
+> 目标：把 A 股市场分析、股票筛选、本地数据库和模拟组合拆解为可实施的工程任务，并接入当前统一市场/详情/自选/AI 架构
 > 边界：只做研究、筛选、模拟组合和本地复盘，不接券商实盘交易
 
 ---
 
 ## 1. 实施目标
 
-A 股功能不是一个独立应用，而是 ThisIsMyQuant 在现有“模拟盘 + 本地数据库 + 分析复盘工作台”上的新市场域。实现后用户应能完成：
+A 股功能不是一个独立应用，而是 ThisIsMyQuant 在现有“模拟盘 + 本地数据库 + 分析复盘工作台”上的新市场域。CMC/Coinbase 重构后，A 股入口统一收敛到“市场”和“标的详情”，实现后用户应能完成：
 
 ```text
-A 股总览 → 行业/概念下钻 → 个股工作台 → 股票筛选器 → 模拟组合 → 复盘与 LLM 总结
+市场发现 → A 股筛选 → 个股详情 → 自选/模拟组合 → 复盘与引用式 AI 总结
 ```
 
 首阶段目标：
 
 1. 建立 A 股本地数据库：股票目录、指数行情、日 K、行业/概念、财务摘要、因子快照、筛选结果。
-2. 新增 A 股总览页：指数、市场宽度、涨跌停、成交额、行业/概念热力。
-3. 新增行业/概念页：板块排行、成分股、领涨领跌、资金流、相关新闻。
-4. 新增个股工作台：K 线、基础资料、财务摘要、估值、资金面、公告新闻、同行比较。
-5. 新增股票筛选器：条件构建、结果表、模板保存、股票池快照。
+2. 在 `/markets` 中补齐 A 股总览：指数、市场宽度、涨跌停、成交额、行业/概念热力。
+3. 在 `/markets` 或筛选抽屉中补齐行业/概念下钻：板块排行、成分股、领涨领跌、资金流、相关新闻。
+4. 在 `/markets/stocks/:symbol` 补齐个股工作台：K 线、基础资料、财务摘要、估值、资金面、公告新闻、同行比较。
+5. 在统一市场筛选器中补齐股票筛选器：条件构建、结果表、模板保存、股票池快照。
 6. 为后续模拟组合预留账户、订单、持仓和组合绩效接口。
 
 ---
@@ -36,7 +36,9 @@ adapters/stock_data.rs
   → db/sqlite.rs stock_* tables
   → engine/stock_factors.rs
   → commands/stock.rs
-  → frontend/src/pages/AStockPage.tsx
+  → commands/market.rs / commands/ai.rs
+  → frontend/src/pages/MarketsPage.tsx
+  → frontend/src/pages/AssetDetailPage.tsx
 ```
 
 | 层 | 新增/扩展 | 职责 |
@@ -47,22 +49,21 @@ adapters/stock_data.rs
 | DB | `db/sqlite.rs` | 创建 stock 表、读写股票数据和筛选快照。 |
 | Commands | `commands/stock.rs` | A 股总览、个股详情、筛选器、财务查询。 |
 | Frontend API | `frontend/src/api/client.ts` | 类型化 invoke 封装。 |
-| Frontend Page | `frontend/src/pages/AStockPage.tsx` | A 股总览、行业、个股、筛选、财报、组合 tabs。 |
+| Frontend Page | `frontend/src/pages/MarketsPage.tsx`、`frontend/src/pages/AssetDetailPage.tsx` | A 股发现、行业/概念、个股详情、筛选、财报、组合入口。 |
 
 ### 2.2 路由设计
 
-短期采用单页多 tab，降低侧栏复杂度：
+当前采用统一市场和详情路由，不再新增独立 A 股一级入口：
 
 | 路由 | 页面 | 说明 |
 |---|---|---|
-| `/stocks` | A 股 | 默认进入 A 股总览。 |
-| `/stocks?tab=industry` | 行业/概念 | 行业热力、概念排行和成分股。 |
-| `/stocks?tab=detail&symbol=600000.SH` | 个股 | 个股工作台。 |
-| `/stocks?tab=screener` | 筛选器 | 条件筛选和结果快照。 |
-| `/stocks?tab=financials` | 财报 | 财报中心。 |
-| `/stocks?tab=portfolio` | 模拟组合 | A 股纸面组合，后续阶段实现。 |
+| `/markets` | 市场 | 通过资产类型筛选进入 A 股总览、指数、个股、ETF。 |
+| `/markets/stocks/:symbol` | 个股详情 | 个股工作台。 |
+| `/watchlist` | 自选 | A 股关注列表、分组、备注和提醒。 |
+| `/simulation` | 模拟盘 | 后续承载 A 股模拟组合入口或账户切换。 |
+| `/ai` | 引用式 AI | 个股速览、财报摘要、行业对比、组合复盘。 |
 
-后续若 A 股功能变重，再拆成独立路由。
+旧 `/stocks` 路由保留重定向到 `/markets`。
 
 ---
 
@@ -418,37 +419,35 @@ score = 0.20 * momentum
 ```text
 frontend/src/
 ├── pages/
-│   └── AStockPage.tsx
-├── features/stocks/
-│   ├── AStockDashboard.tsx
-│   ├── StockIndustryView.tsx
-│   ├── StockDetailWorkspace.tsx
-│   ├── StockScreener.tsx
-│   ├── StockFinancialCenter.tsx
-│   ├── StockPaperPortfolio.tsx
-│   ├── components/
-│   │   ├── MarketBreadthStrip.tsx
-│   │   ├── IndexQuoteCard.tsx
-│   │   ├── IndustryHeatmap.tsx
-│   │   ├── StockHeader.tsx
-│   │   ├── FinancialSnapshot.tsx
-│   │   ├── StockScreenerBuilder.tsx
-│   │   └── ScreenResultTable.tsx
-│   └── types.ts
+│   ├── MarketsPage.tsx
+│   └── AssetDetailPage.tsx
+├── features/markets/
+│   ├── AssetTable.tsx
+│   ├── MarketFilters.tsx
+│   ├── MarketLeaderboard.tsx
+│   └── MiniSparkline.tsx
+├── features/detail/
+│   ├── AssetHeader.tsx
+│   ├── KlinePanel.tsx
+│   ├── AssetStatsGrid.tsx
+│   └── AssetDetailTabs.tsx
+└── features/ai/
+    ├── AiReportCard.tsx
+    └── AiSourceList.tsx
 ```
 
-短期也可以先把组件放在 `pages/AStockPage.tsx` 中，等功能稳定后拆分。
+旧 `features/stocks/*` 组件已清理。新功能默认接入 `features/markets/*` 与 `features/detail/*`，避免再次形成独立 A 股页面矩阵。
 
-### 6.2 A 股页 tabs
+### 6.2 A 股功能归属
 
-| Tab | 组件 | 数据 |
+| 功能 | 组件/入口 | 数据 |
 |---|---|---|
-| 总览 | `AStockDashboard` | `get_a_stock_dashboard` |
-| 行业概念 | `StockIndustryView` | `list_stock_industries`、`get_stock_industry_detail` |
-| 个股 | `StockDetailWorkspace` | `get_stock_detail`、`get_stock_klines` |
-| 筛选器 | `StockScreener` | `run_stock_screener`、`save_stock_screen` |
-| 财报 | `StockFinancialCenter` | `list_stock_financials` |
-| 模拟组合 | `StockPaperPortfolio` | P1 实现 |
+| 总览 | `/markets` 中的 A 股市场摘要 | `get_a_stock_dashboard`、`list_market_assets` |
+| 行业概念 | 市场筛选/下钻面板 | `list_stock_industries`、`get_stock_industry_detail` |
+| 个股 | `/markets/stocks/:symbol` | `get_stock_detail`、`get_stock_klines` |
+| 筛选器 | `/markets` 高级筛选 | `run_stock_screener`、`save_stock_screen` |
+| 财报 | 详情页财务 Tab / AI 上下文 | `list_stock_financials` |
+| 模拟组合 | `/simulation` 后续账户类型 | P1 实现 |
 
 ### 6.3 关键交互
 
@@ -636,9 +635,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 |---|---|---|
 | API client | `frontend/src/api/client.ts` | 类型化封装完成。 |
 | Mock 数据 | `frontend/src/api/e2e-mock.ts` | E2E 可跑。 |
-| A 股页路由 | `frontend/src/App.tsx`、`AppShell.tsx` | 侧栏出现 A 股入口。 |
-| 总览 UI | `frontend/src/pages/AStockPage.tsx` | 指数、宽度、热力图显示。 |
-| 行业详情 | `AStockPage.tsx` 或 `features/stocks` | 点击行业可下钻。 |
+| A 股路由 | `frontend/src/App.tsx`、`AppShell.tsx` | `/stocks` 重定向到 `/markets`，市场页支持 A 股筛选。 |
+| 总览 UI | `frontend/src/pages/MarketsPage.tsx` | 指数、宽度、热力图显示。 |
+| 行业详情 | `features/markets` 下钻组件 | 点击行业可下钻。 |
 
 ### A3：个股与筛选器
 
@@ -646,9 +645,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 |---|---|---|
 | 个股详情命令 | `commands/stock.rs` | 返回 `StockDetailView`。 |
 | K 线查询 | `get_stock_klines` | 图表可展示日 K。 |
-| 个股工作台 UI | `AStockPage.tsx` | 展示价格、财务、估值、资金面。 |
+| 个股工作台 UI | `AssetDetailPage.tsx` | 展示价格、财务、估值、资金面。 |
 | 筛选器 engine | `engine/stock_factors.rs` | 条件过滤正确。 |
-| 筛选器 UI | `StockScreener` | 可运行、保存模板和结果。 |
+| 筛选器 UI | `MarketsPage.tsx` / `MarketFilters` | 可运行、保存模板和结果。 |
 
 ### A4：模拟组合与 LLM
 
@@ -656,9 +655,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 |---|---|---|
 | 组合表 | `db/sqlite.rs` | 账户、订单、持仓表可用。 |
 | 组合 commands | `commands/stock.rs` | 买卖、持仓、权益可查询。 |
-| 模拟组合 UI | `StockPaperPortfolio` | T+1、费用、模拟标识可见。 |
+| 模拟组合 UI | `SimulationPage.tsx` 后续扩展账户类型 | T+1、费用、模拟标识可见。 |
 | 个股速览 | `commands/analysis.rs` 或 `stock.rs` | LLM 输出含引用和免责声明。 |
-| 组合复盘 | `StockPaperPortfolio` / `Reports` | 组合归因可生成。 |
+| 组合复盘 | `AI` / `Reports` | 组合归因可生成。 |
 
 ---
 

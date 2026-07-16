@@ -30,6 +30,22 @@ import type {
   CreateStockPaperAccountRequest,
   PlaceStockPaperOrderRequest,
   CancelStockPaperOrderRequest,
+  MarketOverview,
+  MarketLeaderboard,
+  MarketFilters,
+  MarketAssetSearchResult,
+  WatchlistGroup,
+  WatchlistItem,
+  WatchlistSummary,
+  MarketEvent,
+  MarketEventQuery,
+  MarketEventListResult,
+  DatabaseDomainSummary,
+  DataDomainActionResult,
+  DataDomainCode,
+  AiSummaryRequest,
+  AiReportSummary,
+  AiTaskListResult,
 } from "@/types";
 import { e2eMockApi } from "@/api/e2e-mock";
 import { normalizeAppearance } from "@/lib/appearance";
@@ -514,6 +530,9 @@ const liveApi = {
   backupDatabase: async () =>
     unwrap(await invoke<ApiResponse<string>>("backup_database")),
 
+  prepareDatabaseRestore: async (backupPath: string) =>
+    unwrap(await invoke<ApiResponse<string>>("prepare_database_restore", { backup_path: backupPath })),
+
   // A 股
   listStockSymbols: async (params?: { query?: string; industry?: string; limit?: number }) =>
     unwrap(
@@ -727,6 +746,191 @@ const liveApi = {
 
     return stream.getReader();
   },
+
+  // CMC 重构：统一市场 API
+  getMarketOverview: async () =>
+    unwrap(await invoke<ApiResponse<MarketOverview>>("get_market_overview")),
+
+  listMarketAssets: async (params: MarketFilters & { sort_by?: string; sort_desc?: boolean; limit?: number; offset?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<MarketAssetSearchResult>>("list_market_assets", {
+        market: params.market ?? null,
+        sector: params.sector ?? null,
+        industry: params.industry ?? null,
+        quality: params.quality ?? null,
+        watched: params.watched ?? null,
+        min_turnover: params.min_turnover ?? null,
+        query: params.query ?? null,
+        sort_by: params.sort_by ?? null,
+        sort_desc: params.sort_desc ?? null,
+        limit: params.limit ?? null,
+        offset: params.offset ?? null,
+      })
+    ),
+
+  getMarketLeaderboard: async (params: { category: string; market?: string; limit?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<MarketLeaderboard>>("get_market_leaderboard", {
+        category: params.category,
+        market: params.market ?? null,
+        limit: params.limit ?? null,
+      })
+    ),
+
+  getAssetSparkline: async (params: { symbol: string; market: string; points?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<number[]>>("get_asset_sparkline", {
+        symbol: params.symbol,
+        market: params.market,
+        points: params.points ?? null,
+      })
+    ),
+
+  searchAssets: async (query: string, limit?: number) =>
+    unwrap(
+      await invoke<ApiResponse<MarketAssetSearchResult>>("search_assets", {
+        query,
+        limit: limit ?? null,
+      })
+    ),
+
+  // 统一自选 API
+  listWatchlistGroups: async () =>
+    unwrap(await invoke<ApiResponse<WatchlistGroup[]>>("list_watchlist_groups")),
+
+  createWatchlistGroup: async (payload: { name: string; sort_order?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<WatchlistGroup>>("save_watchlist_group", {
+        id: null,
+        name: payload.name,
+        sort_order: payload.sort_order ?? null,
+      })
+    ),
+
+  updateWatchlistGroup: async (payload: { id: string; name: string; sort_order?: number }) =>
+    unwrap(
+      await invoke<ApiResponse<WatchlistGroup>>("save_watchlist_group", {
+        id: payload.id,
+        name: payload.name,
+        sort_order: payload.sort_order ?? null,
+      })
+    ),
+
+  deleteWatchlistGroup: async (id: string) =>
+    unwrap(await invoke<ApiResponse<void>>("delete_watchlist_group", { id })),
+
+  listWatchlistItems: async (groupId?: string) =>
+    unwrap(
+      await invoke<ApiResponse<WatchlistItem[]>>("list_watchlist_items", {
+        group_id: groupId ?? null,
+      })
+    ),
+
+  addWatchlistItem: async (payload: {
+    group_id: string;
+    asset_type: "futures" | "stock";
+    symbol: string;
+    name: string;
+    notes?: string;
+    alert_price?: number;
+    alert_pct?: number;
+  }) =>
+    unwrap(
+      await invoke<ApiResponse<WatchlistItem>>("save_watchlist_item", {
+        id: null,
+        group_id: payload.group_id,
+        asset_type: payload.asset_type,
+        symbol: payload.symbol,
+        name: payload.name,
+        notes: payload.notes ?? null,
+        alert_price: payload.alert_price ?? null,
+        alert_pct: payload.alert_pct ?? null,
+        sort_order: null,
+      })
+    ),
+
+  updateWatchlistItem: async (payload: {
+    id: string;
+    group_id: string;
+    asset_type: "futures" | "stock";
+    symbol: string;
+    name: string;
+    notes?: string;
+    alert_price?: number;
+    alert_pct?: number;
+    sort_order?: number;
+  }) =>
+    unwrap(
+      await invoke<ApiResponse<WatchlistItem>>("save_watchlist_item", {
+        id: payload.id,
+        group_id: payload.group_id,
+        asset_type: payload.asset_type,
+        symbol: payload.symbol,
+        name: payload.name,
+        notes: payload.notes ?? null,
+        alert_price: payload.alert_price ?? null,
+        alert_pct: payload.alert_pct ?? null,
+        sort_order: payload.sort_order ?? null,
+      })
+    ),
+
+  removeWatchlistItem: async (id: string) =>
+    unwrap(await invoke<ApiResponse<void>>("delete_watchlist_item", { id })),
+
+  getWatchlistSummary: async () =>
+    unwrap(await invoke<ApiResponse<WatchlistSummary>>("get_watchlist_summary")),
+
+  getWatchlistEvents: async () =>
+    unwrap(await invoke<ApiResponse<MarketEvent[]>>("get_watchlist_events")),
+
+  // CMC 重构：P1 事件资讯中心
+  listMarketEvents: async (params: MarketEventQuery) =>
+    unwrap(
+      await invoke<ApiResponse<MarketEventListResult>>("list_market_events", {
+        source: params.source ?? null,
+        symbol: params.symbol ?? null,
+        sector: params.sector ?? null,
+        importance: params.importance ?? null,
+        event_type: params.event_type ?? null,
+        start: params.start ?? null,
+        end: params.end ?? null,
+        limit: params.limit ?? null,
+      })
+    ),
+
+  // CMC 重构：P1 数据库资产中心
+  getDatabaseDomainSummary: async () =>
+    unwrap(await invoke<ApiResponse<DatabaseDomainSummary>>("get_database_domain_summary")),
+
+  syncDataDomain: async (domain: DataDomainCode) =>
+    unwrap(
+      await invoke<ApiResponse<DataDomainActionResult>>("sync_data_domain", { domain })
+    ),
+
+  exportDataDomain: async (domain: DataDomainCode) =>
+    unwrap(
+      await invoke<ApiResponse<DataDomainActionResult>>("export_data_domain", { domain })
+    ),
+
+  cleanupDataDomain: async (domain: DataDomainCode) =>
+    unwrap(
+      await invoke<ApiResponse<DataDomainActionResult>>("cleanup_data_domain", { domain })
+    ),
+
+  // CMC 重构：P1 引用式 AI
+  generateAiSummary: async (payload: AiSummaryRequest) =>
+    unwrap(
+      await invoke<ApiResponse<AiReportSummary>>("generate_ai_summary", {
+        task_type: payload.task_type,
+        target_symbol: payload.target_symbol ?? null,
+        target_assets: payload.target_assets ?? null,
+        prompt: payload.prompt ?? null,
+        provider: payload.provider ?? null,
+      })
+    ),
+
+  listAiTasks: async () =>
+    unwrap(await invoke<ApiResponse<AiTaskListResult>>("list_ai_tasks")),
 };
 
 export const api = E2E_MOCK ? e2eMockApi : liveApi;

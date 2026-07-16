@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const port = Number(process.env.PLAYWRIGHT_PORT ?? 5173);
+const baseURL = `http://localhost:${port}`;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -8,7 +11,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL,
     trace: "on-first-retry",
   },
   projects: [
@@ -22,8 +25,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "node ./node_modules/vite/bin/vite.js",
-    url: "http://localhost:5173",
+    command: `node ./node_modules/vite/bin/vite.js --host 127.0.0.1 --port ${port}`,
+    url: baseURL,
     reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === "true",
     env: {
       VITE_E2E_MOCK: "true",

@@ -20,6 +20,9 @@ interface E2eSuiteReport {
     ok: boolean;
     message: string;
   }>;
+  stock_checks: E2eModuleResult[];
+  detail_checks: E2eModuleResult[];
+  sim_checks: E2eModuleResult[];
   modules: E2eModuleResult[];
   analyses: Array<{
     trigger: string;
@@ -27,6 +30,7 @@ interface E2eSuiteReport {
     symbol: string;
     content_len: number;
     has_disclaimer: boolean;
+    source_count: number;
   }>;
 }
 
@@ -66,6 +70,12 @@ test.describe("客户端 Live E2E", () => {
       expect(check.context_bars, `${check.symbol} context`).toBeGreaterThan(0);
     }
     expect(report.modules.length).toBeGreaterThanOrEqual(8);
+    for (const group of [report.stock_checks, report.detail_checks, report.sim_checks]) {
+      expect(group.length).toBeGreaterThan(0);
+      for (const mod of group) {
+        expect(mod.ok, `${mod.module}: ${mod.message}`).toBeTruthy();
+      }
+    }
 
     const required = [
       "llm",
@@ -79,6 +89,7 @@ test.describe("客户端 Live E2E", () => {
       "reports_db",
       "analysis_tomorrow",
       "analysis_short_term",
+      "ai_sources",
     ];
     for (const name of required) {
       const mod = report.modules.find((m) => m.module === name);

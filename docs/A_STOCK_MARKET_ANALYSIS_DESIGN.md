@@ -1,9 +1,9 @@
 # A 股市场分析产品规划
 
-> 版本：v0.1 · 2026-07-09  
-> 定位：A 股市场分析 + 本地数据库 + 模拟组合复盘  
+> 版本：v0.1 · 2026-07-09
+> 定位：A 股市场分析 + 本地数据库 + 模拟组合复盘
 > 边界：只做行情、研究、筛选、模拟组合和复盘，不接券商实盘交易
-> 交互稿：`docs/A_STOCK_UI_INTERACTION_DESIGN.html`  
+> 交互稿：`docs/A_STOCK_UI_INTERACTION_DESIGN.html`（历史设计稿，CMC 重构后不再作为当前 UI 依据）
 > 实现文档：`docs/A_STOCK_FEATURE_IMPLEMENTATION.md`
 
 ---

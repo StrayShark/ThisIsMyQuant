@@ -149,6 +149,28 @@ fn limit_order_fills_when_price_update_crosses_limit() {
 }
 
 #[test]
+fn limit_order_can_be_cancelled_before_fill() {
+    let db = temp_db();
+    let service = test_service(db);
+    let account = service.default_account().expect("default account");
+
+    service.seed_price("RB0", 3500.0);
+    let mut order_req = req("RB0", "buy", "open", "limit", Some(1000.0), 1);
+    order_req.account_id = account.id.clone();
+
+    let order = service.place_order(order_req).expect("place limit order");
+    assert_eq!(order.status, "open");
+
+    let cancelled = service.cancel_order(&order.id).expect("cancel order");
+    assert_eq!(cancelled.status, "cancelled");
+
+    let open_orders = service
+        .list_orders(Some(&account.id), Some("open"), 10)
+        .expect("list open orders");
+    assert!(open_orders.is_empty());
+}
+
+#[test]
 fn price_update_revalues_open_position() {
     let db = temp_db();
     let service = test_service(db);

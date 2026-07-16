@@ -32,6 +32,13 @@ pub const LLM_CATALOG: &[LlmProviderTemplate] = &[
         key_required: true,
     },
     LlmProviderTemplate {
+        name: "kimi",
+        label: "Kimi / Moonshot",
+        default_base_url: "https://api.moonshot.cn/v1",
+        default_model: "kimi-k2-0711-preview",
+        key_required: true,
+    },
+    LlmProviderTemplate {
         name: "openai",
         label: "OpenAI",
         default_base_url: "https://api.openai.com/v1",

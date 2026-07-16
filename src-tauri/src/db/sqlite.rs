@@ -7,15 +7,17 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::config::UserPreferences;
 use crate::engine::dimensions;
 use crate::error::{AppError, AppResult};
+use crate::models::parse_dt;
 use crate::models::{
-    dt_to_iso, AnalysisReport, CalendarEvent, Contract, DatabaseSummary, DatabaseTableStats,
-    DimensionFact, FollowupMessage, KLine, LiquiditySnapshot, NewsClassification,
-    NewsClassificationView, NewsItemView, NewsRecord, SimAccount, SimContractRule,
-    SimEquitySnapshot, SimJournalEntry, SimOrder, SimPosition, SimRiskEvent, SimRiskRule, SimTrade,
-    StockBar, StockBoard, StockBoardMember, StockBoardSnapshot, StockFactorSnapshot,
-    StockFinancialMetric, StockIndexBar, StockMarketBreadth, StockPaperAccount, StockPaperOrder,
-    StockPaperPosition, StockPaperTrade, StockScreenResult, StockScreenTemplate, StockSymbol,
-    StockValuationSnapshot, StockWatchlist, Tick,
+    dt_to_iso, AnalysisReport, CalendarEvent, Contract, DataDomain, DataDomainTimeRange,
+    DatabaseDomainSummary, DatabaseSummary, DatabaseTableStats, DimensionFact, FollowupMessage,
+    KLine, LiquiditySnapshot, NewsClassification, NewsClassificationView, NewsItemView, NewsRecord,
+    SimAccount, SimContractRule, SimEquitySnapshot, SimJournalEntry, SimOrder, SimPosition,
+    SimRiskEvent, SimRiskRule, SimTrade, StockBar, StockBoard, StockBoardMember,
+    StockBoardSnapshot, StockFactorSnapshot, StockFinancialMetric, StockIndexBar,
+    StockMarketBreadth, StockPaperAccount, StockPaperOrder, StockPaperPosition, StockPaperTrade,
+    StockScreenResult, StockScreenTemplate, StockSymbol, StockValuationSnapshot, StockWatchlist,
+    Tick, WatchlistGroup, WatchlistItem, WatchlistSummary,
 };
 
 pub struct Database {
@@ -477,6 +479,31 @@ impl Database {
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS watchlist_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS watchlist_items (
+                id TEXT PRIMARY KEY,
+                group_id TEXT NOT NULL,
+                asset_type TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                name TEXT NOT NULL,
+                notes TEXT,
+                alert_price REAL,
+                alert_pct REAL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (group_id) REFERENCES watchlist_groups(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_watchlist_items_group
+                ON watchlist_items(group_id, sort_order);
+            CREATE INDEX IF NOT EXISTS idx_watchlist_items_symbol_type
+                ON watchlist_items(symbol, asset_type);
             CREATE TABLE IF NOT EXISTS stock_paper_accounts (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -586,6 +613,57 @@ impl Database {
             "ALTER TABLE sim_orders ADD COLUMN trailing_reference_price REAL",
             [],
         );
+        // 统一自选：初始化默认分组并迁移旧 stock_watchlists
+        let _ = Self::init_watchlist_defaults(&conn);
+        Ok(())
+    }
+
+    fn init_watchlist_defaults(conn: &Connection) -> AppResult<()> {
+        let now = dt_to_iso(Utc::now());
+        let defaults = vec![
+            ("wl-all", "全部", 0),
+            ("wl-futures", "期货", 1),
+            ("wl-stocks", "A股", 2),
+            ("wl-focus", "重点观察", 3),
+        ];
+        for (id, name, order) in defaults {
+            conn.execute(
+                "INSERT OR IGNORE INTO watchlist_groups (id, name, sort_order, created_at, updated_at) VALUES (?,?,?,?,?)",
+                params![id, name, order, now, now],
+            )?;
+        }
+        let count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM watchlist_items", [], |row| row.get(0))?;
+        if count == 0 {
+            let mut stmt = conn.prepare(
+                "SELECT id, name, symbols_json, created_at, updated_at FROM stock_watchlists",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })?;
+            for row in rows {
+                let (id, name, symbols_json, created_at, updated_at) = row?;
+                let group_id = format!("wl-migrate-{}", id);
+                conn.execute(
+                    "INSERT OR IGNORE INTO watchlist_groups (id, name, sort_order, created_at, updated_at) VALUES (?,?,?,?,?)",
+                    params![group_id, name, 100, created_at, updated_at],
+                )?;
+                let symbols: Vec<String> = serde_json::from_str(&symbols_json).unwrap_or_default();
+                for (idx, symbol) in symbols.iter().enumerate() {
+                    let item_id = uuid::Uuid::new_v4().to_string();
+                    conn.execute(
+                        "INSERT INTO watchlist_items (id, group_id, asset_type, symbol, name, sort_order, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                        params![item_id, group_id, "stock", symbol, symbol, idx as i64, created_at, updated_at],
+                    )?;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1897,6 +1975,364 @@ impl Database {
             tables,
         })
     }
+
+    pub fn get_database_domain_summary(&self, path: &str) -> AppResult<DatabaseDomainSummary> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let total_size: i64 = std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(0);
+        let specs = domain_specs();
+        let mut domains = Vec::with_capacity(specs.len());
+        for spec in specs {
+            let (record_count, size_bytes, time_range, last_updated) =
+                domain_stats(&conn, spec.tables)?;
+            let quality = quality_for(record_count, last_updated.as_deref()).to_string();
+            domains.push(DataDomain {
+                code: spec.code.to_string(),
+                name: spec.name.to_string(),
+                description: spec.description.to_string(),
+                record_count,
+                size_bytes,
+                time_range,
+                last_updated,
+                source: spec.source.to_string(),
+                quality,
+            });
+        }
+        Ok(DatabaseDomainSummary {
+            path: path.to_string(),
+            total_size_bytes: total_size,
+            domains,
+            updated_at: dt_to_iso(Utc::now()),
+        })
+    }
+
+    pub fn get_recent_klines(&self, limit: i64) -> AppResult<Vec<KLine>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT symbol, interval, start_time, open, high, low, close, volume, turnover
+             FROM klines ORDER BY start_time DESC LIMIT ?",
+        )?;
+        let mut rows: Vec<KLine> = stmt
+            .query_map(params![limit], |row| {
+                Ok(KLine {
+                    symbol: row.get(0)?,
+                    interval: row.get(1)?,
+                    start_time: row.get(2)?,
+                    open: row.get(3)?,
+                    high: row.get(4)?,
+                    low: row.get(5)?,
+                    close: row.get(6)?,
+                    volume: row.get(7)?,
+                    turnover: row.get(8)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        rows.reverse();
+        Ok(rows)
+    }
+
+    pub fn get_recent_news_records(&self, limit: i64) -> AppResult<Vec<NewsRecord>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, source, category_id, title, summary, url, display_time, content_hash,
+                    ingested_at
+             FROM news_items ORDER BY display_time DESC LIMIT ?",
+        )?;
+        let rows = stmt.query_map(params![limit], |row| {
+            Ok(NewsRecord {
+                id: row.get(0)?,
+                source: row.get(1)?,
+                category_id: row.get(2)?,
+                title: row.get(3)?,
+                summary: row.get(4)?,
+                url: row.get(5)?,
+                display_time: row.get(6)?,
+                content_hash: row.get(7)?,
+                ingested_at: row.get(8)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn get_domain_record_count(&self, code: &str) -> AppResult<i64> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let specs = domain_specs();
+        let spec = specs
+            .into_iter()
+            .find(|s| s.code == code)
+            .ok_or_else(|| AppError::Msg(format!("unknown domain: {code}")))?;
+        let mut total = 0i64;
+        for (table, _) in spec.tables {
+            total += table_count(&conn, table)?;
+        }
+        Ok(total)
+    }
+
+    pub fn purge_old_news(&self, days: i64) -> AppResult<usize> {
+        let cutoff = (Utc::now() - chrono::Duration::days(days)).to_rfc3339();
+        let mut conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM news_classifications WHERE news_id IN
+             (SELECT id FROM news_items WHERE display_time < ?)",
+            params![cutoff],
+        )?;
+        let n = tx.execute(
+            "DELETE FROM news_items WHERE display_time < ?",
+            params![cutoff],
+        )?;
+        tx.commit()?;
+        Ok(n)
+    }
+
+    pub fn purge_old_calendar_cache(&self, days: i64) -> AppResult<usize> {
+        let cutoff = (Utc::now() - chrono::Duration::days(days)).to_rfc3339();
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let n = conn.execute(
+            "DELETE FROM calendar_cache WHERE fetched_at < ?",
+            params![cutoff],
+        )?;
+        Ok(n)
+    }
+
+    pub fn purge_old_reports(&self, days: i64) -> AppResult<usize> {
+        let cutoff = (Utc::now() - chrono::Duration::days(days)).to_rfc3339();
+        let mut conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM followup_messages WHERE report_id IN
+             (SELECT id FROM reports WHERE created_at < ?)",
+            params![cutoff],
+        )?;
+        tx.execute(
+            "DELETE FROM dimension_facts WHERE source_report_id IN
+             (SELECT id FROM reports WHERE created_at < ?)",
+            params![cutoff],
+        )?;
+        let n = tx.execute("DELETE FROM reports WHERE created_at < ?", params![cutoff])?;
+        tx.commit()?;
+        Ok(n)
+    }
+
+    pub fn purge_old_klines_except_daily(&self, keep_days: i64) -> AppResult<usize> {
+        let cutoff = (Utc::now() - chrono::Duration::days(keep_days)).to_rfc3339();
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let n = conn.execute(
+            "DELETE FROM klines WHERE interval != '1d' AND start_time < ?",
+            params![cutoff],
+        )?;
+        Ok(n)
+    }
+}
+
+struct DomainSpec {
+    code: &'static str,
+    name: &'static str,
+    description: &'static str,
+    source: &'static str,
+    tables: &'static [(&'static str, Option<&'static str>)],
+}
+
+fn domain_specs() -> Vec<DomainSpec> {
+    vec![
+        DomainSpec {
+            code: "quotes",
+            name: "行情/报价",
+            description: "实时 tick、主力连续报价数据",
+            source: "akshare/sina",
+            tables: &[("ticks", Some("timestamp"))],
+        },
+        DomainSpec {
+            code: "klines",
+            name: "K 线",
+            description: "期货与股票多周期 K 线数据",
+            source: "akshare",
+            tables: &[("klines", Some("start_time"))],
+        },
+        DomainSpec {
+            code: "news",
+            name: "资讯",
+            description: "金十新闻与分类标签",
+            source: "jin10",
+            tables: &[("news_items", Some("display_time"))],
+        },
+        DomainSpec {
+            code: "calendar",
+            name: "日历",
+            description: "财经日历事件缓存",
+            source: "jin10",
+            tables: &[("calendar_cache", Some("fetched_at"))],
+        },
+        DomainSpec {
+            code: "reports",
+            name: "报告",
+            description: "LLM 生成的品种研报、复盘与跟进",
+            source: "llm",
+            tables: &[("reports", Some("created_at"))],
+        },
+        DomainSpec {
+            code: "simulation",
+            name: "模拟交易",
+            description: "模拟账户、委托、成交、持仓、资金曲线与交易日志",
+            source: "local",
+            tables: &[
+                ("sim_accounts", Some("updated_at")),
+                ("sim_contract_rules", Some("updated_at")),
+                ("sim_risk_rules", Some("updated_at")),
+                ("sim_risk_events", Some("triggered_at")),
+                ("sim_orders", Some("updated_at")),
+                ("sim_trades", Some("traded_at")),
+                ("sim_positions", Some("updated_at")),
+                ("sim_equity_snapshots", Some("snapshot_at")),
+                ("sim_journal_entries", Some("updated_at")),
+                ("sim_replay_sessions", Some("updated_at")),
+            ],
+        },
+        DomainSpec {
+            code: "watchlist",
+            name: "自选",
+            description: "统一自选分组与标的",
+            source: "local",
+            tables: &[
+                ("watchlist_groups", Some("updated_at")),
+                ("watchlist_items", Some("updated_at")),
+            ],
+        },
+        DomainSpec {
+            code: "stocks",
+            name: "A 股数据",
+            description: "A 股标的、日线、板块、财务、估值与因子数据",
+            source: "akshare/tushare",
+            tables: &[
+                ("stock_symbols", Some("updated_at")),
+                ("stock_daily_bars", Some("trade_date")),
+                ("stock_index_daily_bars", Some("trade_date")),
+                ("stock_boards", Some("updated_at")),
+                ("stock_board_members", Some("updated_at")),
+                ("stock_board_snapshots", Some("trade_date")),
+                ("stock_financial_metrics", Some("updated_at")),
+                ("stock_valuation_snapshots", Some("trade_date")),
+                ("stock_factor_snapshots", Some("factor_date")),
+                ("stock_screen_templates", Some("updated_at")),
+                ("stock_screen_results", Some("created_at")),
+                ("stock_watchlists", Some("updated_at")),
+            ],
+        },
+        DomainSpec {
+            code: "settings",
+            name: "配置",
+            description: "应用偏好、密钥与 LLM 凭据",
+            source: "local",
+            tables: &[
+                ("app_preferences", Some("updated_at")),
+                ("app_secrets", Some("updated_at")),
+                ("llm_credentials", Some("updated_at")),
+            ],
+        },
+    ]
+}
+
+fn table_count(conn: &Connection, table: &str) -> AppResult<i64> {
+    let count: i64 = conn
+        .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+            row.get(0)
+        })
+        .unwrap_or(0);
+    Ok(count)
+}
+
+fn estimate_table_size(conn: &Connection, table: &str, count: i64) -> AppResult<i64> {
+    if count == 0 {
+        return Ok(0);
+    }
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let types: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(2))?
+        .filter_map(|r| r.ok())
+        .collect();
+    let bytes_per_row: i64 = types
+        .iter()
+        .map(|t| {
+            let upper = t.to_uppercase();
+            if upper.contains("INT") || upper.contains("REAL") || upper.contains("NUM") {
+                8
+            } else if upper.contains("BLOB") {
+                128
+            } else if upper.contains("TEXT") {
+                64
+            } else {
+                32
+            }
+        })
+        .sum();
+    Ok(count * bytes_per_row.max(1))
+}
+
+fn domain_stats(
+    conn: &Connection,
+    tables: &[(&str, Option<&str>)],
+) -> AppResult<(i64, i64, Option<DataDomainTimeRange>, Option<String>)> {
+    let mut record_count = 0i64;
+    let mut size_bytes = 0i64;
+    let mut min_time: Option<String> = None;
+    let mut max_time: Option<String> = None;
+    for (table, time_col) in tables {
+        let count = table_count(conn, table)?;
+        record_count += count;
+        size_bytes += estimate_table_size(conn, table, count)?;
+        if let Some(col) = time_col {
+            let row = conn.query_row(
+                &format!("SELECT MIN({col}), MAX({col}) FROM {table}"),
+                [],
+                |row| {
+                    let mn: Option<String> = row.get(0)?;
+                    let mx: Option<String> = row.get(1)?;
+                    Ok((mn, mx))
+                },
+            );
+            if let Ok((mn, mx)) = row {
+                if let Some(mn) = mn {
+                    if min_time.as_ref().map(|cur| mn < *cur).unwrap_or(true) {
+                        min_time = Some(mn);
+                    }
+                }
+                if let Some(mx) = mx {
+                    if max_time.as_ref().map(|cur| mx > *cur).unwrap_or(true) {
+                        max_time = Some(mx.clone());
+                    }
+                }
+            }
+        }
+    }
+    let time_range = if min_time.is_some() || max_time.is_some() {
+        Some(DataDomainTimeRange {
+            start: min_time,
+            end: max_time.clone(),
+        })
+    } else {
+        None
+    };
+    Ok((record_count, size_bytes, time_range, max_time))
+}
+
+fn quality_for(count: i64, last_updated: Option<&str>) -> &'static str {
+    if count == 0 {
+        return "pending";
+    }
+    let Some(ts) = last_updated else {
+        return "pending";
+    };
+    let Some(dt) = parse_dt(ts) else {
+        return "error";
+    };
+    let age = Utc::now().signed_duration_since(dt);
+    if age.num_minutes() < 5 {
+        "live"
+    } else if age.num_hours() < 24 {
+        "stale"
+    } else {
+        "error"
+    }
 }
 
 fn row_to_report(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnalysisReport> {
@@ -2692,6 +3128,138 @@ impl Database {
         Ok(())
     }
 
+    // ============================================================================
+    // 统一自选（CMC 重构）
+    // ============================================================================
+
+    pub fn list_watchlist_groups(&self) -> AppResult<Vec<WatchlistGroup>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, sort_order, created_at, updated_at
+             FROM watchlist_groups ORDER BY sort_order ASC, created_at ASC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(WatchlistGroup {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                sort_order: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn save_watchlist_group(&self, group: &WatchlistGroup) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO watchlist_groups (id, name, sort_order, created_at, updated_at)
+             VALUES (?,?,?,?,?)",
+            params![
+                group.id,
+                group.name,
+                group.sort_order,
+                group.created_at,
+                group.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_watchlist_group(&self, id: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute("DELETE FROM watchlist_items WHERE group_id=?", params![id])?;
+        conn.execute("DELETE FROM watchlist_groups WHERE id=?", params![id])?;
+        Ok(())
+    }
+
+    pub fn list_watchlist_items(&self, group_id: Option<&str>) -> AppResult<Vec<WatchlistItem>> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, group_id, asset_type, symbol, name, notes, alert_price, alert_pct, sort_order, created_at, updated_at
+             FROM watchlist_items WHERE (group_id = ?1 OR ?1 IS NULL)
+             ORDER BY sort_order ASC, created_at ASC",
+        )?;
+        let rows = stmt.query_map(params![group_id], |row| {
+            Ok(WatchlistItem {
+                id: row.get(0)?,
+                group_id: row.get(1)?,
+                asset_type: row.get(2)?,
+                symbol: row.get(3)?,
+                name: row.get(4)?,
+                notes: row.get(5)?,
+                alert_price: row.get(6)?,
+                alert_pct: row.get(7)?,
+                sort_order: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn save_watchlist_item(&self, item: &WatchlistItem) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO watchlist_items
+             (id, group_id, asset_type, symbol, name, notes, alert_price, alert_pct, sort_order, created_at, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            params![
+                item.id,
+                item.group_id,
+                item.asset_type,
+                item.symbol,
+                item.name,
+                item.notes,
+                item.alert_price,
+                item.alert_pct,
+                item.sort_order,
+                item.created_at,
+                item.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_watchlist_item(&self, id: &str) -> AppResult<()> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        conn.execute("DELETE FROM watchlist_items WHERE id=?", params![id])?;
+        Ok(())
+    }
+
+    pub fn get_watchlist_summary(&self) -> AppResult<WatchlistSummary> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let total_count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM watchlist_items", [], |row| row.get(0))?;
+        let futures_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM watchlist_items WHERE asset_type=?",
+            params!["futures"],
+            |row| row.get(0),
+        )?;
+        let stock_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM watchlist_items WHERE asset_type=?",
+            params!["stock"],
+            |row| row.get(0),
+        )?;
+        Ok(WatchlistSummary {
+            total_count,
+            futures_count,
+            stock_count,
+            move_count: 0,
+            event_count: 0,
+        })
+    }
+
+    pub fn is_in_watchlist(&self, symbol: &str, asset_type: &str) -> AppResult<bool> {
+        let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM watchlist_items WHERE symbol=? AND asset_type=? LIMIT 1",
+            params![symbol, asset_type],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
     pub fn count_stock_symbols(&self) -> AppResult<i64> {
         let conn = self.conn.lock().map_err(|e| AppError::Msg(e.to_string()))?;
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM stock_symbols")?;
@@ -2949,7 +3517,8 @@ mod stock_tests {
     use crate::models::{
         StockBar, StockBoard, StockBoardMember, StockBoardSnapshot, StockFinancialMetric,
         StockIndexBar, StockPaperAccount, StockPaperOrder, StockPaperPosition, StockPaperTrade,
-        StockScreenTemplate, StockSymbol, StockValuationSnapshot, StockWatchlist,
+        StockScreenTemplate, StockSymbol, StockValuationSnapshot, StockWatchlist, WatchlistGroup,
+        WatchlistItem,
     };
 
     fn temp_db() -> Database {
@@ -3236,6 +3805,49 @@ mod stock_tests {
         assert_eq!(fetched[0].symbols, vec!["600000.SH"]);
         db.delete_stock_watchlist("wl-1").unwrap();
         assert!(db.list_stock_watchlists().unwrap().is_empty());
+    }
+
+    #[test]
+    fn unified_watchlist_crud_and_summary() {
+        let db = temp_db();
+        let now = dt_to_iso(Utc::now());
+        let group = WatchlistGroup {
+            id: "group-1".to_string(),
+            name: "重点观察".to_string(),
+            sort_order: 1,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        };
+        db.save_watchlist_group(&group).unwrap();
+
+        let item = WatchlistItem {
+            id: "item-1".to_string(),
+            group_id: group.id.clone(),
+            asset_type: "futures".to_string(),
+            symbol: "RB0".to_string(),
+            name: "螺纹钢".to_string(),
+            notes: Some("测试备注".to_string()),
+            alert_price: None,
+            alert_pct: Some(2.0),
+            sort_order: 1,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        };
+        db.save_watchlist_item(&item).unwrap();
+
+        let items = db.list_watchlist_items(Some(&group.id)).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].symbol, "RB0");
+        assert_eq!(items[0].notes.as_deref(), Some("测试备注"));
+        assert!(db.is_in_watchlist("RB0", "futures").unwrap());
+
+        let summary = db.get_watchlist_summary().unwrap();
+        assert_eq!(summary.total_count, 1);
+        assert_eq!(summary.futures_count, 1);
+        assert_eq!(summary.stock_count, 0);
+
+        db.delete_watchlist_item("item-1").unwrap();
+        assert!(!db.is_in_watchlist("RB0", "futures").unwrap());
     }
 
     #[test]
