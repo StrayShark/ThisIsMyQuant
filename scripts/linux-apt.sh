@@ -2,8 +2,16 @@
 # Linux apt 重试与镜像回退（Docker 网络抖动 / 官方源不可达）。
 set -euo pipefail
 
+apt_sudo() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
 apt_configure() {
-  cat >/etc/apt/apt.conf.d/80-docker-ci <<'EOF'
+  apt_sudo tee /etc/apt/apt.conf.d/80-docker-ci >/dev/null <<'EOF'
 Acquire::Retries "5";
 Acquire::http::Timeout "120";
 Acquire::https::Timeout "120";
@@ -14,16 +22,16 @@ apt_use_mirror() {
   local mirror="${1:?mirror url}"
   echo "使用 apt 镜像: ${mirror}" >&2
   if [[ -f /etc/apt/sources.list.d/debian.sources ]]; then
-    sed -i "s|http://deb.debian.org/debian|${mirror}|g" /etc/apt/sources.list.d/debian.sources
-    sed -i "s|http://deb.debian.org/debian-security|${mirror}-security|g" /etc/apt/sources.list.d/debian.sources || true
+    apt_sudo sed -i "s|http://deb.debian.org/debian|${mirror}|g" /etc/apt/sources.list.d/debian.sources
+    apt_sudo sed -i "s|http://deb.debian.org/debian-security|${mirror}-security|g" /etc/apt/sources.list.d/debian.sources || true
   elif [[ -f /etc/apt/sources.list.d/ubuntu.sources ]]; then
-    sed -i "s|http://archive.ubuntu.com/ubuntu|${mirror}|g" /etc/apt/sources.list.d/ubuntu.sources
-    sed -i "s|http://security.ubuntu.com/ubuntu|${mirror}|g" /etc/apt/sources.list.d/ubuntu.sources
+    apt_sudo sed -i "s|http://archive.ubuntu.com/ubuntu|${mirror}|g" /etc/apt/sources.list.d/ubuntu.sources
+    apt_sudo sed -i "s|http://security.ubuntu.com/ubuntu|${mirror}|g" /etc/apt/sources.list.d/ubuntu.sources
   elif [[ -f /etc/apt/sources.list ]]; then
     local host="${mirror#http://}"
     host="${host#https://}"
-    sed -i "s|deb.debian.org|${host%%/*}|g" /etc/apt/sources.list
-    sed -i "s|security.debian.org|${host%%/*}|g" /etc/apt/sources.list || true
+    apt_sudo sed -i "s|deb.debian.org|${host%%/*}|g" /etc/apt/sources.list
+    apt_sudo sed -i "s|security.debian.org|${host%%/*}|g" /etc/apt/sources.list || true
   fi
 }
 
@@ -46,11 +54,7 @@ apt_retry() {
 }
 
 apt_get() {
-  if [[ "$(id -u)" -eq 0 ]]; then
-    apt_retry apt-get "$@"
-  else
-    apt_retry sudo apt-get "$@"
-  fi
+  apt_retry apt_sudo apt-get "$@"
 }
 
 apt_update() {
